@@ -1,0 +1,62 @@
+From 0d4cd4577b3ea56ad905ecf0dfdd837ed7b576f5 Mon Sep 17 00:00:00 2001
+From: blazerpaul15 <blazerpaul15@gmail.com>
+Date: Mon, 20 Jul 2026 12:38:32 +0900
+Subject: [PATCH 2/2] AxDiagnostics: Ignore thermal pseudo-zones
+
+Some devices expose trip, BCL, IBAT and scod limit signals through the
+thermal zone interface. These are not live temperature sensors and can
+report threshold or sentinel values, causing false thermal emergency
+warnings.
+
+Exclude those pseudo-zones from hottest-zone and health calculations.
+
+Change-Id: I854b078431bd16177112e23fdf011e903fbd38aa
+---
+ .../java/com/axion/diagnostics/data/BatteryInfo.kt |  2 +-
+ .../java/com/axion/diagnostics/data/ThermalInfo.kt | 14 +++++++++++++-
+ 2 files changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/app/src/main/java/com/axion/diagnostics/data/BatteryInfo.kt b/app/src/main/java/com/axion/diagnostics/data/BatteryInfo.kt
+index 05a9e3f..a6e2c66 100644
+--- a/app/src/main/java/com/axion/diagnostics/data/BatteryInfo.kt
++++ b/app/src/main/java/com/axion/diagnostics/data/BatteryInfo.kt
+@@ -150,7 +150,7 @@ object BatteryCollector {
+ }
+ 
+ internal fun normalizeBatteryCurrentMa(rawCurrent: Int): Int {
+-    if (rawCurrent == 0) return 0
++    if (rawCurrent == 0 || rawCurrent == Int.MIN_VALUE) return 0
+     val raw = rawCurrent.toLong()
+     val absRaw = abs(raw)
+     val currentMa = if (absRaw >= CURRENT_UA_THRESHOLD) {
+diff --git a/app/src/main/java/com/axion/diagnostics/data/ThermalInfo.kt b/app/src/main/java/com/axion/diagnostics/data/ThermalInfo.kt
+index e3814a3..bd1deb3 100644
+--- a/app/src/main/java/com/axion/diagnostics/data/ThermalInfo.kt
++++ b/app/src/main/java/com/axion/diagnostics/data/ThermalInfo.kt
+@@ -63,7 +63,9 @@ object ThermalCollector {
+                     if (tripIdx > 20) break
+                 }
+ 
+-                zones.add(ThermalZone(zoneDir.name, type, tempC, trips))
++                if (isSensorZone(type, tempC)) {
++                    zones.add(ThermalZone(zoneDir.name, type, tempC, trips))
++                }
+             }
+         }
+ 
+@@ -86,5 +88,15 @@ object ThermalCollector {
+         )
+     }
+ 
++    private fun isSensorZone(type: String, temperatureC: Float): Boolean {
++        val lowerType = type.lowercase()
++        if (lowerType.contains("trip")) return false
++        if (lowerType.contains("bcl")) return false
++        if (lowerType.contains("ibat-lvl")) return false
++        if (lowerType == "socd") return false
++        if (temperatureC <= -100f) return false
++        return true
++    }
++
+     private fun readFileText(file: File): String = runCatching { file.readText().trim() }.getOrDefault("")
+ }
