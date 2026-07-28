@@ -1,0 +1,62 @@
+From bb5d7c97d2fd88fe65d5abea2dc6495f6990262b Mon Sep 17 00:00:00 2001
+From: Jonas Salo <salomannen1234@gmail.com>
+Date: Fri, 26 Jun 2026 17:16:13 +0200
+Subject: [PATCH 2/5] nativewindow: align Oplus camera buffer handling
+
+---
+ libs/nativewindow/AHardwareBuffer.cpp | 24 ++++++++----------------
+ libs/ui/include/ui/BufferQueueDefs.h  |  5 ++++-
+ 2 files changed, 12 insertions(+), 17 deletions(-)
+
+diff --git a/libs/nativewindow/AHardwareBuffer.cpp b/libs/nativewindow/AHardwareBuffer.cpp
+index 8774b2262e..50bc6217c6 100644
+--- a/libs/nativewindow/AHardwareBuffer.cpp
++++ b/libs/nativewindow/AHardwareBuffer.cpp
+@@ -762,23 +762,15 @@ bool AHardwareBuffer_formatIsYuv(uint32_t format) {
+         case AHARDWAREBUFFER_FORMAT_YCbCr_P010:
+         case AHARDWAREBUFFER_FORMAT_YCbCr_P210:
+             return true;
+-        // Qualcomm vendor YUV formats — the source-built gralloc resolves camera
+-        // buffers to these. Without recognizing them as YUV, AHardwareBuffer_lockPlanes
+-        // returns only 1 plane (base pointer), leaving planes[1]/[2] uninitialized.
+-        // This causes camera post-processing (ArcSoft APS) to compute garbage buffer
+-        // dimensions from the stale planes[1] pointer, producing green/distorted photos.
+-        case 0x7FA30C00: // HAL_PIXEL_FORMAT_NV21_ENCODEABLE
+-        case 0x7FA30C01: // HAL_PIXEL_FORMAT_YCrCb_420_SP_ADRENO
+-        case 0x7FA30C03: // HAL_PIXEL_FORMAT_YCbCr_420_SP_TILED
+-        case 0x7FA30C04: // HAL_PIXEL_FORMAT_YCbCr_420_SP_VENUS
+-        case 0x7FA30C06: // HAL_PIXEL_FORMAT_YCbCr_420_SP_VENUS_UBWC
+-        case 0x7FA30C07: // HAL_PIXEL_FORMAT_YCbCr_420_SP_4R_UBWC
+-        case 0x7FA30C09: // HAL_PIXEL_FORMAT_YCbCr_420_TP10_UBWC
++        // qcom vendor format recognized by OOS libnativewindow (binary-verified: OOS
++        // AHardwareBuffer_lockPlanes routes 0x7FA30C0A -> lockAsyncYCbCr 3-plane fill).
++        // Stock AOSP returns false here, so the SAT/fusion P010_VENUS OUTPUT buffer takes
++        // the single-plane lockAsync path, leaving chroma planes[1]/[2] unset -> APS
++        // camApsBufferLockPlanes descriptor=0x0 -> BasicTone/ArcSoft walk off-buffer ->
++        // SIGSEGV. Recognizing it = OOS parity, born-correct descriptor, retires libapsfixup.
++        // See docs/re-notes/formatisyuv-p010-framework-root-RE.md. OOS recognizes ONLY this
++        // qcom format here (NOT the wider 12-format set), so we match OOS exactly.
+         case 0x7FA30C0A: // HAL_PIXEL_FORMAT_YCbCr_420_P010_VENUS
+-        case 0x113:      // HAL_PIXEL_FORMAT_NV21_ZSL
+-        case 0x114:      // HAL_PIXEL_FORMAT_YCrCb_420_SP_VENUS
+-        case 0x116:      // HAL_PIXEL_FORMAT_NV12_HEIF
+-        case 0x124:      // HAL_PIXEL_FORMAT_YCbCr_420_P010_UBWC
+             return true;
+         default:
+             return false;
+diff --git a/libs/ui/include/ui/BufferQueueDefs.h b/libs/ui/include/ui/BufferQueueDefs.h
+index 0fecda9cf1..a383041bfc 100644
+--- a/libs/ui/include/ui/BufferQueueDefs.h
++++ b/libs/ui/include/ui/BufferQueueDefs.h
+@@ -22,7 +22,10 @@ namespace android {
+         // BufferQueue will keep track of at most this value of buffers.
+         // Attempts at runtime to increase the number of buffers past this
+         // will fail.
+-        static constexpr int NUM_BUFFER_SLOTS = 64;
++        // Oplus camera requests >64 buffer slots; stock 64 -> black viewfinder. Bumped to 96
++        // (giulia-port parity, realahnet 1f4f5574). NOT OOS-binary-verified like the P010 fix;
++        // pure capacity headroom, low risk. See infiniti ITERATION-LOG v2.0 row P2.
++        static constexpr int NUM_BUFFER_SLOTS = 96;
+ 
+         enum {
+             // A flag returned by dequeueBuffer when the client needs to call

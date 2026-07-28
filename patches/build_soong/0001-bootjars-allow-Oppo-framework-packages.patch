@@ -1,0 +1,26 @@
+From 6e23fa3ca15625bef520697f995d51bc163fd47e Mon Sep 17 00:00:00 2001
+From: Jonas Salo <salomannen1234@gmail.com>
+Date: Wed, 24 Jun 2026 15:46:41 +0200
+Subject: [PATCH] bootjars: allow Oppo framework packages
+
+---
+ scripts/check_boot_jars/package_allowed_list.txt | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/scripts/check_boot_jars/package_allowed_list.txt b/scripts/check_boot_jars/package_allowed_list.txt
+index 4dd0093a6..5063be984 100644
+--- a/scripts/check_boot_jars/package_allowed_list.txt
++++ b/scripts/check_boot_jars/package_allowed_list.txt
+@@ -290,9 +290,12 @@ com\.nvidia
+ com\.nvidia\..*
+ 
+ # OPLUS adds
++com\.color\.inner\..*
++com\.oppo\..*
+ com\.oplus\..*
+ net\.oneplus\..*
+ oplus\..*
++com.oppo.media
+ vendor\.oplus\..*
+ com\.oneplus\..*
+ vendor\.oneplus\..*

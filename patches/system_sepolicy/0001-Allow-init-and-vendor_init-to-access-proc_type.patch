@@ -1,0 +1,26 @@
+From 7361ef6d814c6e99062b18709ca8ade16c9311cd Mon Sep 17 00:00:00 2001
+From: Hecheng Yu <kde-yyds@qq.com>
+Date: Thu, 16 Apr 2026 19:37:11 +0800
+Subject: [PATCH] Allow init and vendor_init to access proc_type
+
+Oplus camera needs it
+
+Change-Id: Ibe8d905a496192f09625a97173fbae95af5328c0
+Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
+---
+ private/domain.te | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/private/domain.te b/private/domain.te
+index f146717d9..a77674208 100644
+--- a/private/domain.te
++++ b/private/domain.te
+@@ -1571,7 +1571,7 @@ neverallow * same_process_hwservice:hwservice_manager add;
+ 
+ # These filesystems don't allow files or directories to be created, so the permission
+ # to do so should never be granted.
+-neverallow domain {
++neverallow { domain -init -vendor_init } {
+   proc_type
+   sysfs_type
+   -sysfs_gpu

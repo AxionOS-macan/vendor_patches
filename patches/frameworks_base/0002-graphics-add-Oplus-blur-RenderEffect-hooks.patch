@@ -1,0 +1,193 @@
+From 7e76e9617c5f5f1bd277abdcddf655e340a9c98f Mon Sep 17 00:00:00 2001
+From: Jonas Salo <salomannen1234@gmail.com>
+Date: Wed, 8 Jul 2026 17:40:13 +0200
+Subject: [PATCH 2/8] graphics: add Oplus blur RenderEffect hooks
+
+Change-Id: Iecc9c3cd526417837fab7b2b4f92d091d73b63a7
+---
+ .../java/android/graphics/RenderEffect.java   | 51 ++++++++++++++
+ libs/hwui/jni/RenderEffect.cpp                | 70 +++++++++++++++++++
+ 2 files changed, 121 insertions(+)
+
+diff --git a/graphics/java/android/graphics/RenderEffect.java b/graphics/java/android/graphics/RenderEffect.java
+index 8c0e89031d42..bdeb9908ffb0 100644
+--- a/graphics/java/android/graphics/RenderEffect.java
++++ b/graphics/java/android/graphics/RenderEffect.java
+@@ -19,6 +19,7 @@ package android.graphics;
+ import android.annotation.NonNull;
+ import android.annotation.Nullable;
+ import android.graphics.Shader.TileMode;
++import android.util.MathUtils;
+ 
+ import java.util.LinkedHashMap;
+ import java.util.Map;
+@@ -146,6 +147,52 @@ public final class RenderEffect {
+         }
+     }
+ 
++    /**
++     * Create an Oplus-compatible gradient blur effect.
++     *
++     * <p>Oplus framework clients expect this API to exist on devices that support their material
++     * blur stack. The native implementation maps the Oplus parameters onto the platform HWUI blur
++     * pipeline when the full Oplus native renderer is not present.</p>
++     * @hide
++     */
++    @NonNull
++    public static RenderEffect createGradientBlurEffect(float startRadius, float endRadius,
++            boolean isVertical, float speed, int blendMode, int blendC, int mixC,
++            @Nullable RenderEffect inputEffect) {
++        long nativeInputEffect = inputEffect != null ? inputEffect.mNativeRenderEffect : 0;
++        float maxRadius = MathUtils.max(startRadius, endRadius);
++        return new RenderEffect(nativeCreateGradientBlurEffect(
++                isVertical ? maxRadius : startRadius,
++                isVertical ? maxRadius : endRadius,
++                isVertical ? startRadius : maxRadius,
++                isVertical ? endRadius : maxRadius,
++                speed,
++                blendMode,
++                blendC,
++                mixC,
++                nativeInputEffect));
++    }
++
++     /**
++      * Create an Oplus-compatible Kawase blur effect.
++      * @hide
++      */
++    @NonNull
++    public static RenderEffect createKawaseBlurEffect(float radius,
++            @Nullable RenderEffect inputEffect) {
++        long nativeInputEffect = inputEffect != null ? inputEffect.mNativeRenderEffect : 0;
++        return new RenderEffect(nativeCreateKawaseBlurEffect(radius, nativeInputEffect));
++    }
++
++     /**
++      * Create an Oplus-compatible Kawase blur effect.
++      * @hide
++      */
++    @NonNull
++    public static RenderEffect createKawaseBlurEffect(float radius) {
++        return new RenderEffect(nativeCreateKawaseBlurEffect(radius, 0));
++    }
++
+     /**
+      * Create a {@link RenderEffect} that renders the contents of the input {@link Bitmap}.
+      * This is useful to create an input for other {@link RenderEffect} types such as
+@@ -384,6 +431,10 @@ public final class RenderEffect {
+             float offsetX, float offsetY, long nativeInput);
+     private static native long nativeCreateBlurEffect(
+             float radiusX, float radiusY, long nativeInput, int edgeTreatment);
++    private static native long nativeCreateGradientBlurEffect(
++            float radiusLeft, float radiusRight, float radiusTop, float radiusBottom, float speed,
++            int blendMode, int blendC, int mixC, long nativeInput);
++    private static native long nativeCreateKawaseBlurEffect(float radius, long nativeInput);
+     private static native long nativeCreateBitmapEffect(
+             long bitmapHandle, float srcLeft, float srcTop, float srcRight, float srcBottom,
+             float dstLeft, float dstTop, float dstRight, float dstBottom);
+diff --git a/libs/hwui/jni/RenderEffect.cpp b/libs/hwui/jni/RenderEffect.cpp
+index 3a1b6e9077a2..608f54f85f93 100644
+--- a/libs/hwui/jni/RenderEffect.cpp
++++ b/libs/hwui/jni/RenderEffect.cpp
+@@ -18,8 +18,11 @@
+ #include "GraphicsJNI.h"
+ #include "Properties.h"
+ #include "SkBlendMode.h"
++#include "SkColor.h"
+ #include "SkImageFilter.h"
+ #include "SkImageFilters.h"
++#include "SkPoint.h"
++#include "SkGradientShader.h"
+ #include "graphics_jni_helpers.h"
+ #include "utils/Blur.h"
+ 
+@@ -27,8 +30,38 @@
+ #include <mutex>
+ #include <unordered_map>
+ 
++#include <algorithm>
++
+ using namespace android::uirenderer;
+ 
++static sk_sp<SkImageFilter> maskGradientBlur(sk_sp<SkImageFilter> blurFilter,
++        jfloat radiusLeft, jfloat radiusRight, jfloat radiusTop, jfloat radiusBottom) {
++    constexpr float kMinGradientDelta = 0.5f;
++    constexpr float kFadeDistance = 260.0f;
++
++    float horizontalDelta = std::abs(radiusRight - radiusLeft);
++    float verticalDelta = std::abs(radiusBottom - radiusTop);
++    if (horizontalDelta < kMinGradientDelta && verticalDelta < kMinGradientDelta) {
++        return blurFilter;
++    }
++
++    bool isVertical = verticalDelta >= horizontalDelta;
++    bool fadeInFromStart = isVertical ? radiusTop < radiusBottom : radiusLeft < radiusRight;
++
++    SkPoint points[2] = {
++            {0.0f, 0.0f},
++            {isVertical ? 0.0f : kFadeDistance, isVertical ? kFadeDistance : 0.0f},
++    };
++    SkColor colors[2] = {
++            fadeInFromStart ? SK_ColorTRANSPARENT : SK_ColorWHITE,
++            fadeInFromStart ? SK_ColorWHITE : SK_ColorTRANSPARENT,
++    };
++    sk_sp<SkShader> maskShader = SkGradientShader::MakeLinear(
++            points, colors, nullptr, 2, SkTileMode::kClamp);
++    sk_sp<SkImageFilter> maskFilter = SkImageFilters::Shader(std::move(maskShader));
++    return SkImageFilters::Blend(SkBlendMode::kDstIn, std::move(blurFilter), std::move(maskFilter));
++}
++
+ namespace {
+ 
+ struct LayerScaledBlurEffect {
+@@ -136,6 +169,41 @@ static jlong createBlurEffect(JNIEnv* env , jobject, jfloat radiusX,
+     return reinterpret_cast<jlong>(filter);
+ }
+ 
++static jlong createGradientBlurEffect(JNIEnv* env, jobject, jfloat radiusLeft,
++        jfloat radiusRight, jfloat radiusTop, jfloat radiusBottom, jfloat speed, jint blendMode,
++        jint blendC, jint mixC, jlong inputFilterHandle) {
++    auto* inputImageFilter = reinterpret_cast<SkImageFilter*>(inputFilterHandle);
++
++    float radiusX = std::max(0.0f, std::max(radiusLeft, radiusRight));
++    float radiusY = std::max(0.0f, std::max(radiusTop, radiusBottom));
++    float blurScale = speed > 0.0f ? speed : 1.0f;
++
++    sk_sp<SkImageFilter> blurFilter =
++            SkImageFilters::Blur(
++                    Blur::convertRadiusToSigma(radiusX * blurScale),
++                    Blur::convertRadiusToSigma(radiusY * blurScale),
++                    SkTileMode::kMirror,
++                    sk_ref_sp(inputImageFilter),
++                    nullptr);
++    blurFilter = maskGradientBlur(
++            std::move(blurFilter), radiusLeft, radiusRight, radiusTop, radiusBottom);
++    return reinterpret_cast<jlong>(blurFilter.release());
++}
++
++static jlong createKawaseBlurEffect(JNIEnv* env, jobject, jfloat radius,
++        jlong inputFilterHandle) {
++    auto* inputImageFilter = reinterpret_cast<SkImageFilter*>(inputFilterHandle);
++    float safeRadius = std::max(0.0f, radius);
++    sk_sp<SkImageFilter> blurFilter =
++            SkImageFilters::Blur(
++                    Blur::convertRadiusToSigma(safeRadius),
++                    Blur::convertRadiusToSigma(safeRadius),
++                    SkTileMode::kMirror,
++                    sk_ref_sp(inputImageFilter),
++                    nullptr);
++    return reinterpret_cast<jlong>(blurFilter.release());
++}
++
+ static jlong createBitmapEffect(
+     JNIEnv* env,
+     jobject,
+@@ -256,6 +324,8 @@ static const JNINativeMethod gRenderEffectMethods[] = {
+         {"nativeGetFinalizer", "()J", (void*)getRenderEffectFinalizer},
+         {"nativeCreateOffsetEffect", "(FFJ)J", (void*)createOffsetEffect},
+         {"nativeCreateBlurEffect", "(FFJI)J", (void*)createBlurEffect},
++        {"nativeCreateGradientBlurEffect", "(FFFFFIIIJ)J", (void*)createGradientBlurEffect},
++        {"nativeCreateKawaseBlurEffect", "(FJ)J", (void*)createKawaseBlurEffect},
+         {"nativeCreateBitmapEffect", "(JFFFFFFFF)J", (void*)createBitmapEffect},
+         {"nativeCreateColorFilterEffect", "(JJ)J", (void*)createColorFilterEffect},
+         {"nativeCreateBlendModeEffect", "(JJI)J", (void*)createBlendModeEffect},

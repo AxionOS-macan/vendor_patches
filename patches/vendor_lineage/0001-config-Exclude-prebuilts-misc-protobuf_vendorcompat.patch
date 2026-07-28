@@ -1,0 +1,24 @@
+From ca4ca5e83e5c2f44c4c842fa05a7b37501245bb9 Mon Sep 17 00:00:00 2001
+From: LuK1337 <priv.luk@gmail.com>
+Date: Sat, 4 Jul 2026 15:13:37 +0200
+Subject: [PATCH 1/2] config: Exclude prebuilts/misc/protobuf_vendorcompat
+
+Change-Id: Ibbe03b9be35ab2b44a57e22f702564e833f6feb4
+---
+ config/common.mk | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/config/common.mk b/config/common.mk
+index 8acb46e9..cb0ddc04 100644
+--- a/config/common.mk
++++ b/config/common.mk
+@@ -5,6 +5,9 @@ $(call inherit-product-if-exists, vendor/extra/product.mk)
+ $(call inherit-product-if-exists, vendor/addons/config.mk)
+ include vendor/lineage/audio/config.mk
+ 
++# Exclude repos from bp scanning
++PRODUCT_SOURCE_ROOT_DIRS += -prebuilts/misc/protobuf_vendorcompat
++
+ # Allow vendor prebuilt repos to exclude themselves from bp scanning
+ -include $(sort $(wildcard vendor/*/*/exclude-bp.mk))
+ 

@@ -1,0 +1,23 @@
+From 14300b0331c4ac9233045f27f4ad28ba42133225 Mon Sep 17 00:00:00 2001
+From: blazerpaul15 <blazerpaul15@gmail.com>
+Date: Wed, 15 Jul 2026 22:29:02 +0900
+Subject: [PATCH] common: Allow apps to find linearmotor service
+
+Mark linearmotor_vibrator_service as app_api_service so Oplus Camera can
+find the service for haptic feedback.
+
+Signed-off-by: blazerpaul15 <blazerpaul15@gmail.com>
+---
+ common/private/service.te | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/common/private/service.te b/common/private/service.te
+index 1aba736..2fd6c79 100644
+--- a/common/private/service.te
++++ b/common/private/service.te
+@@ -9,4 +9,4 @@ type ax_sandbox_service, system_api_service, system_server_service, service_mana
+ type game_space_service, system_api_service, system_server_service, service_manager_type;
+ type freeform_service, system_api_service, system_server_service, service_manager_type;
+ type theme_engine_service, system_api_service, system_server_service, service_manager_type;
+-type linearmotor_vibrator_service, system_api_service, system_server_service, service_manager_type;
++type linearmotor_vibrator_service, app_api_service, system_api_service, system_server_service, service_manager_type;

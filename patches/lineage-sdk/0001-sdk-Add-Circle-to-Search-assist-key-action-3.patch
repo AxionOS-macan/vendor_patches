@@ -1,0 +1,46 @@
+From cdcd71c9223cd174bbdf5dba56bc743fc89e7b33 Mon Sep 17 00:00:00 2001
+From: blazerpaul15 <blazerpaul15@gmail.com>
+Date: Thu, 16 Jul 2026 18:49:21 +0900
+Subject: [PATCH 1/2] sdk: Add Circle to Search assist key action [3]
+
+Change-Id: I574ef0e52b00991abe3192302ad34db286ab2a06
+---
+ sdk/src/java/lineageos/providers/LineageSettings.java          | 3 ++-
+ .../java/org/lineageos/internal/util/DeviceKeysConstants.java  | 3 ++-
+ 2 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/sdk/src/java/lineageos/providers/LineageSettings.java b/sdk/src/java/lineageos/providers/LineageSettings.java
+index 1a1481d..c0d2035 100644
+--- a/sdk/src/java/lineageos/providers/LineageSettings.java
++++ b/sdk/src/java/lineageos/providers/LineageSettings.java
+@@ -374,7 +374,7 @@ public final class LineageSettings {
+             new InclusiveIntegerRangeValidator(0, 86400);
+ 
+     private static final Validator sHardwareKeyActionvalidator =
+-            new InclusiveIntegerRangeValidator(0, 19);
++            new InclusiveIntegerRangeValidator(0, 20);
+ 
+     private static final Validator sAlwaysTrueValidator = new Validator() {
+         @Override
+@@ -1097,6 +1097,7 @@ public final class LineageSettings {
+          * 17 - Notifications
+          * 18 - Toggle Qs Panel
+          * 19 - Ringer Modes
++         * 20 - Contextual Search
+          */
+         public static final String KEY_HOME_LONG_PRESS_ACTION = "key_home_long_press_action";
+ 
+diff --git a/sdk/src/java/org/lineageos/internal/util/DeviceKeysConstants.java b/sdk/src/java/org/lineageos/internal/util/DeviceKeysConstants.java
+index dbb07e0..48b7cc7 100644
+--- a/sdk/src/java/org/lineageos/internal/util/DeviceKeysConstants.java
++++ b/sdk/src/java/org/lineageos/internal/util/DeviceKeysConstants.java
+@@ -34,7 +34,8 @@ public class DeviceKeysConstants {
+         CLEAR_ALL_NOTIFICATIONS,
+         NOTIFICATIONS,
+         QS_PANEL,
+-        RINGER_MODES;
++        RINGER_MODES,
++        CONTEXTUAL_SEARCH;
+ 
+         public static Action fromIntSafe(int id) {
+             if (id < NOTHING.ordinal() || id > Action.values().length) {

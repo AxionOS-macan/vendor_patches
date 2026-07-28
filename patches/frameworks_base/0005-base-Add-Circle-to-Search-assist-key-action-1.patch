@@ -1,0 +1,72 @@
+From cac712ba97b22fa0be01f1a48ad45dcec1d34c42 Mon Sep 17 00:00:00 2001
+From: blazerpaul15 <blazerpaul15@gmail.com>
+Date: Thu, 16 Jul 2026 18:48:23 +0900
+Subject: [PATCH 5/8] base: Add Circle to Search assist key action [1]
+
+Change-Id: I51415d47819bfe483ee614198911516f816a5fbc
+---
+ .../ContextualSearchManagerService.java       |  3 ++-
+ .../server/policy/PhoneWindowManager.java     | 22 +++++++++++++++++++
+ 2 files changed, 24 insertions(+), 1 deletion(-)
+
+diff --git a/services/contextualsearch/java/com/android/server/contextualsearch/ContextualSearchManagerService.java b/services/contextualsearch/java/com/android/server/contextualsearch/ContextualSearchManagerService.java
+index fecb6d2c92c3..b285fbc56a21 100644
+--- a/services/contextualsearch/java/com/android/server/contextualsearch/ContextualSearchManagerService.java
++++ b/services/contextualsearch/java/com/android/server/contextualsearch/ContextualSearchManagerService.java
+@@ -454,7 +454,8 @@ public class ContextualSearchManagerService extends SystemService {
+ 
+     private void enforcePermission(@NonNull final String func) {
+         final Context ctx = getContext();
+-        if (!(ctx.checkCallingPermission(ACCESS_CONTEXTUAL_SEARCH) == PERMISSION_GRANTED
++        if (!(Binder.getCallingUid() == Process.SYSTEM_UID
++                || ctx.checkCallingPermission(ACCESS_CONTEXTUAL_SEARCH) == PERMISSION_GRANTED
+                 || isCallerTemporary())) {
+             final String msg = "Permission Denial: Cannot call " + func + " from pid="
+                     + Binder.getCallingPid() + ", uid=" + Binder.getCallingUid();
+diff --git a/services/core/java/com/android/server/policy/PhoneWindowManager.java b/services/core/java/com/android/server/policy/PhoneWindowManager.java
+index cf1e430192b9..ff49498e7b95 100644
+--- a/services/core/java/com/android/server/policy/PhoneWindowManager.java
++++ b/services/core/java/com/android/server/policy/PhoneWindowManager.java
+@@ -136,6 +136,7 @@ import android.app.NotificationManager;
+ import android.app.PendingIntent;
+ import android.app.ProgressDialog;
+ import android.app.SearchManager;
++import android.app.contextualsearch.ContextualSearchManager;
+ import android.app.UiModeManager;
+ import android.bluetooth.BluetoothProfile;
+ import android.content.ActivityNotFoundException;
+@@ -2342,6 +2343,9 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+                        event.getEventTime(), assistInvocationType);
+                 notifyKeyGestureCompleted(event, KeyGestureEvent.KEY_GESTURE_TYPE_LAUNCH_ASSISTANT);
+                 break;
++            case CONTEXTUAL_SEARCH:
++                launchContextualSearchAction();
++                break;
+             case VOICE_SEARCH:
+                 launchVoiceAssist(mAllowStartActivityForLongPressOnPowerDuringSetup);
+                 break;
+@@ -6055,6 +6059,24 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+         }
+     }
+ 
++    void launchContextualSearchAction() {
++        sendCloseSystemWindows(SYSTEM_DIALOG_REASON_ASSIST);
++
++        final ContextualSearchManager contextualSearchManager =
++                mContext.getSystemService(ContextualSearchManager.class);
++        if (contextualSearchManager == null) {
++            Log.w(TAG, "Contextual search service unavailable");
++            return;
++        }
++
++        try {
++            contextualSearchManager.startContextualSearch(
++                    ContextualSearchManager.ENTRYPOINT_SYSTEM_ACTION);
++        } catch (RuntimeException e) {
++            Log.w(TAG, "Unable to start contextual search", e);
++        }
++    }
++
+     void launchVoiceAssistWithWakeLock() {
+         sendCloseSystemWindows(SYSTEM_DIALOG_REASON_ASSIST);
+ 

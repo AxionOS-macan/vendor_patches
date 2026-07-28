@@ -1,0 +1,129 @@
+From 2158f8216738140aa33ea5d48c22ea580648f0fe Mon Sep 17 00:00:00 2001
+From: blazerpaul15 <blazerpaul15@gmail.com>
+Date: Sat, 25 Jul 2026 09:48:51 +0900
+Subject: [PATCH] healthd-ext: Report OPlus fast charge power
+
+OPlus UFCS/PPS fast charging exposes the real negotiated power through
+oplus_chg common nodes, while the generic health values can report
+battery-side current/voltage and make SystemUI show a much lower
+lockscreen wattage.
+
+Override maxChargingCurrentMicroamps and maxChargingVoltageMicrovolts
+from the OPlus power nodes when available, using USB input voltage and
+power in milliwatts to derive the framework charging current.
+
+This lets BatteryService and SystemUI display the correct fast charging
+wattage on supported OPlus devices.
+
+Change-Id: I3dfd57c0e60f685edb57c77e1c9fce25d584566b
+---
+ aidl/main.cpp | 68 ++++++++++++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 67 insertions(+), 1 deletion(-)
+
+diff --git a/aidl/main.cpp b/aidl/main.cpp
+index 995e1aa..663ee2a 100644
+--- a/aidl/main.cpp
++++ b/aidl/main.cpp
+@@ -5,6 +5,14 @@
+ 
+ #define LOG_TAG "android.hardware.health-service.qti"
+ 
++#include <algorithm>
++#include <cerrno>
++#include <initializer_list>
++#include <climits>
++#include <cstdlib>
++#include <string>
++
++#include <android-base/file.h>
+ #include <android-base/logging.h>
+ #include <android/binder_interface_utils.h>
+ #include <health/utils.h>
+@@ -14,6 +22,7 @@
+ 
+ using aidl::android::hardware::health::HalHealthLoop;
+ using aidl::android::hardware::health::Health;
++using aidl::android::hardware::health::HealthInfo;
+ 
+ #if !CHARGER_FORCE_NO_UI
+ using aidl::android::hardware::health::charger::ChargerCallback;
+@@ -29,6 +38,10 @@ class ChargerCallbackImpl : public ChargerCallback {
+ 
+ static constexpr const char* gInstanceName = "default";
+ static constexpr std::string_view gChargerArg{"--charger"};
++static constexpr const char* kOplusCpaPowerPath = "/sys/class/oplus_chg/common/cpa_power";
++static constexpr const char* kOplusUiPowerPath = "/sys/class/oplus_chg/common/ui_power";
++static constexpr const char* kOplusAdapterPowerPath = "/sys/class/oplus_chg/common/adapter_power";
++static constexpr const char* kUsbVoltageNowPath = "/sys/class/power_supply/usb/voltage_now";
+ 
+ constexpr char *ucsiPSYName[]{
+ 	(char *const)"ucsi-source-psy-soc:qcom,pmic_glink:qcom,ucsi1",
+@@ -37,6 +50,59 @@ constexpr char *ucsiPSYName[]{
+ 
+ #define RETRY_COUNT    100
+ 
++static bool ReadIntFromFile(const char* path, int* value) {
++    std::string content;
++    if (!android::base::ReadFileToString(path, &content, true)) {
++        return false;
++    }
++
++    errno = 0;
++    char* end = nullptr;
++    long parsed = strtol(content.c_str(), &end, 10);
++    if (end == content.c_str() || errno != 0 || parsed < INT_MIN || parsed > INT_MAX) {
++        return false;
++    }
++
++    *value = static_cast<int>(parsed);
++    return true;
++}
++
++static int ReadFirstPositiveInt(std::initializer_list<const char*> paths) {
++    int value = 0;
++    for (const char* path : paths) {
++        if (ReadIntFromFile(path, &value) && value > 0) {
++            return value;
++        }
++    }
++    return -1;
++}
++
++class QtiHealth : public Health {
++  public:
++    QtiHealth(std::string_view instance_name, std::unique_ptr<healthd_config>&& config)
++        : Health(instance_name, std::move(config)) {}
++
++  protected:
++    void UpdateHealthInfo(HealthInfo* health_info) override {
++        if (health_info == nullptr) {
++            return;
++        }
++
++        const int power_mw = ReadFirstPositiveInt(
++                {kOplusCpaPowerPath, kOplusUiPowerPath, kOplusAdapterPowerPath});
++        int voltage_uv = 0;
++        if (power_mw <= 0 || !ReadIntFromFile(kUsbVoltageNowPath, &voltage_uv)
++                || voltage_uv <= 0) {
++            return;
++        }
++
++        const long current_ua = static_cast<long>(power_mw) * 1'000'000'000L / voltage_uv;
++        health_info->maxChargingVoltageMicrovolts = voltage_uv;
++        health_info->maxChargingCurrentMicroamps = static_cast<int>(
++                std::min(current_ua, static_cast<long>(INT_MAX)));
++    }
++};
++
+ void qti_healthd_board_init(struct healthd_config *hc)
+ {
+     int fd;
+@@ -84,7 +150,7 @@ int main(int argc, char** argv) {
+     auto config = std::make_unique<healthd_config>();
+     ::android::hardware::health::InitHealthdConfig(config.get());
+     qti_healthd_board_init(config.get());
+-    auto binder = ndk::SharedRefBase::make<Health>(gInstanceName, std::move(config));
++    auto binder = ndk::SharedRefBase::make<QtiHealth>(gInstanceName, std::move(config));
+ 
+     if (argc >= 2 && argv[1] == gChargerArg) {
+ #if !CHARGER_FORCE_NO_UI

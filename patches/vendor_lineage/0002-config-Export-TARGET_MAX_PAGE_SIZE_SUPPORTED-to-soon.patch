@@ -1,0 +1,22 @@
+From 98d742192cc4b6a0735aa35da17bc655747d7e23 Mon Sep 17 00:00:00 2001
+From: LuK1337 <priv.luk@gmail.com>
+Date: Sat, 4 Jul 2026 15:33:08 +0200
+Subject: [PATCH 2/2] config: Export TARGET_MAX_PAGE_SIZE_SUPPORTED to soong
+
+Change-Id: Ia22d70ee8f80913dda38e601250a45f5604f3deb
+---
+ config/BoardConfigSoong.mk | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/config/BoardConfigSoong.mk b/config/BoardConfigSoong.mk
+index a6fd29ad..4280e5f1 100644
+--- a/config/BoardConfigSoong.mk
++++ b/config/BoardConfigSoong.mk
+@@ -12,6 +12,7 @@ EXPORT_TO_SOONG := \
+     TARGET_KERNEL_CONFIG \
+     TARGET_KERNEL_SOURCE \
+     TARGET_KERNEL_PLATFORM_TARGET \
++    TARGET_MAX_PAGE_SIZE_SUPPORTED \
+     TARGET_PREBUILT_KERNEL_HEADERS
+ 
+ # Setup SOONG_CONFIG_* vars to export the vars listed above.

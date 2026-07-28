@@ -1,0 +1,200 @@
+From a85033bab800edd726b4363cb37cd10005bf1d16 Mon Sep 17 00:00:00 2001
+From: paulblazer15 <blazerpaul15@gmail.com>
+Date: Tue, 23 Jun 2026 12:55:11 +0200
+Subject: [PATCH] Settings: add selectable touch polling rates
+
+Co-authored-by: Jonas Salo <salomannen1234@gmail.com>
+Change-Id: Id698e71ec53d3167bc635397848c40d2faeda155
+---
+ Android.bp                                    |  1 +
+ res/values/arrays.xml                         | 15 +++
+ res/xml/display_settings.xml                  |  6 +-
+ src/com/android/settings/DisplaySettings.java |  3 +
+ ...hTouchPollingRatePreferenceController.java | 99 +++++++++++++++++++
+ 5 files changed, 122 insertions(+), 2 deletions(-)
+ create mode 100644 src/com/android/settings/display/HighTouchPollingRatePreferenceController.java
+
+diff --git a/Android.bp b/Android.bp
+index ba51cd4486..0133c6c818 100644
+--- a/Android.bp
++++ b/Android.bp
+@@ -134,6 +134,7 @@ android_library {
+         // Lineage dependencies
+         "org.lineageos.platform.internal",
+         "LineagePreferenceLib",
++        "vendor.oplus.hardware.touch-V2-java",
+ 
+         // Axion dependencies
+         "ax_compose",
+diff --git a/res/values/arrays.xml b/res/values/arrays.xml
+index 459e42b1b6..a6eab53dde 100644
+--- a/res/values/arrays.xml
++++ b/res/values/arrays.xml
+@@ -18,6 +18,21 @@
+ */
+ -->
+ <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
++    <string-array name="high_touch_polling_rate_entries">
++        <item>120 Hz</item>
++        <item>180 Hz</item>
++        <item>240 Hz</item>
++        <item>330 Hz</item>
++    </string-array>
++
++    <!-- Do not translate. Oplus touch report-rate mode values. -->
++    <string-array name="high_touch_polling_rate_values" translatable="false">
++        <item>0</item>
++        <item>3</item>
++        <item>4</item>
++        <item>14</item>
++    </string-array>
++
+     <!-- Display settings.  The delay in inactivity before the screen is turned off. These are shown in a list dialog. -->
+     <string-array name="screen_timeout_entries">
+         <item>15 seconds</item>
+diff --git a/res/xml/display_settings.xml b/res/xml/display_settings.xml
+index d87170a6cb..aa81c24e74 100644
+--- a/res/xml/display_settings.xml
++++ b/res/xml/display_settings.xml
+@@ -287,11 +287,13 @@
+             android:defaultValue="@*android:bool/config_unplugTurnsOnScreen"
+             settings:requiresConfig="@bool/config_show_top_level_battery" />
+ 
+-        <lineageos.preference.LineageSystemSettingSwitchPreference
++        <lineageos.preference.LineageSystemSettingListPreference
+             android:key="high_touch_polling_rate_enable"
+             android:title="@string/high_touch_polling_rate_title"
+             android:summary="@string/high_touch_polling_rate_summary"
+-            android:defaultValue="false"
++            android:entries="@array/high_touch_polling_rate_entries"
++            android:entryValues="@array/high_touch_polling_rate_values"
++            android:defaultValue="0"
+             settings:requiresFeature="lineagehardware:FEATURE_HIGH_TOUCH_POLLING_RATE" />
+ 
+         <lineageos.preference.LineageSystemSettingSwitchPreference
+diff --git a/src/com/android/settings/DisplaySettings.java b/src/com/android/settings/DisplaySettings.java
+index 9a2d347d64..41fb12b98d 100644
+--- a/src/com/android/settings/DisplaySettings.java
++++ b/src/com/android/settings/DisplaySettings.java
+@@ -28,6 +28,7 @@ import com.android.settings.display.BrightnessLevelPreferenceController;
+ import com.android.settings.display.CameraGesturePreferenceController;
+ import com.android.settings.display.DisplayScreen;
+ import com.android.settings.display.LiftToWakePreferenceController;
++import com.android.settings.display.HighTouchPollingRatePreferenceController;
+ import com.android.settings.display.ShowOperatorNamePreferenceController;
+ import com.android.settings.display.TapToWakePreferenceController;
+ import com.android.settings.display.BlurSettingsPreferenceController;
+@@ -94,6 +95,8 @@ public class DisplaySettings extends DashboardFragment {
+         controllers.add(new ThemePreferenceController(context));
+         controllers.add(new EmulateDisplayCutoutPreferenceController(context));
+         controllers.add(new BrightnessLevelPreferenceController(context, lifecycle));
++        controllers.add(new HighTouchPollingRatePreferenceController(
++                context, KEY_HIGH_TOUCH_POLLING_RATE));
+         return controllers;
+     }
+ 
+diff --git a/src/com/android/settings/display/HighTouchPollingRatePreferenceController.java b/src/com/android/settings/display/HighTouchPollingRatePreferenceController.java
+new file mode 100644
+index 0000000000..3835e97504
+--- /dev/null
++++ b/src/com/android/settings/display/HighTouchPollingRatePreferenceController.java
+@@ -0,0 +1,99 @@
++/*
++ * Copyright (C) 2026 The Infinity-X Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ */
++
++package com.android.settings.display;
++
++import android.content.Context;
++import android.os.SystemProperties;
++import android.util.Log;
++
++import androidx.preference.ListPreference;
++import androidx.preference.Preference;
++import androidx.preference.PreferenceScreen;
++
++import com.android.settings.core.BasePreferenceController;
++
++import lineageos.hardware.LineageHardwareManager;
++import lineageos.providers.LineageSettings;
++
++public class HighTouchPollingRatePreferenceController extends BasePreferenceController
++        implements Preference.OnPreferenceChangeListener {
++
++    private static final String TAG = "HighTouchPollingRate";
++
++    private static final int MODE_120HZ = 0;
++    private static final int MODE_240HZ = 3;
++
++    private static final String TOUCH_REPORT_RATE_PROP = "sys.touch.report_rate";
++
++    private final LineageHardwareManager mHardwareManager;
++
++    public HighTouchPollingRatePreferenceController(Context context, String preferenceKey) {
++        super(context, preferenceKey);
++        mHardwareManager = LineageHardwareManager.getInstance(context);
++    }
++
++    @Override
++    public int getAvailabilityStatus() {
++        return mHardwareManager.isSupported(
++                LineageHardwareManager.FEATURE_HIGH_TOUCH_POLLING_RATE)
++                ? AVAILABLE : UNSUPPORTED_ON_DEVICE;
++    }
++
++    @Override
++    public void displayPreference(PreferenceScreen screen) {
++        super.displayPreference(screen);
++        final ListPreference listPreference = screen.findPreference(getPreferenceKey());
++        listPreference.setPersistent(false);
++    }
++
++    @Override
++    public void updateState(Preference preference) {
++        final ListPreference listPreference = (ListPreference) preference;
++        final int mode = normalizeMode(SystemProperties.getInt(TOUCH_REPORT_RATE_PROP,
++                MODE_120HZ));
++        listPreference.setValue(String.valueOf(mode));
++        listPreference.setSummary(listPreference.getEntry());
++    }
++
++    @Override
++    public boolean onPreferenceChange(Preference preference, Object newValue) {
++        final int mode;
++        try {
++            mode = normalizeMode(Integer.parseInt((String) newValue));
++        } catch (NumberFormatException e) {
++            Log.e(TAG, "Invalid touch polling mode: " + newValue, e);
++            return false;
++        }
++
++        applyMode(mode);
++
++        final ListPreference listPreference = (ListPreference) preference;
++        listPreference.setValue(String.valueOf(mode));
++        listPreference.setSummary(listPreference.getEntry());
++        return false;
++    }
++
++    private void applyMode(int mode) {
++        final boolean enabled = mode != MODE_120HZ;
++        try {
++            SystemProperties.set(TOUCH_REPORT_RATE_PROP, String.valueOf(mode));
++        } catch (RuntimeException e) {
++            Log.e(TAG, "Failed to store touch polling mode: " + mode, e);
++        }
++        LineageSettings.System.putInt(mContext.getContentResolver(), getPreferenceKey(),
++                enabled ? 1 : 0);
++        mHardwareManager.set(LineageHardwareManager.FEATURE_HIGH_TOUCH_POLLING_RATE, enabled);
++    }
++
++    private int normalizeMode(int mode) {
++        return mode == 1 ? MODE_240HZ : mode;
++    }
++}
