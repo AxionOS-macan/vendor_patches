@@ -16,6 +16,12 @@ apply_patches() {
                 continue
             fi
 
+            subject="$(sed -n '/^Subject: /{s/^Subject: \[PATCH[^]]*\] //; s/^Subject: //; p; q;}' "${patch}")"
+            if [ -n "${subject}" ] && git log -n 500 --format=%s --fixed-strings --grep="${subject}" | grep -q .; then
+                echo "Skipping already applied patch by subject: $(basename "${patch}")"
+                continue
+            fi
+
             if ! git am "${patch}" --no-gpg-sign; then
                 echo "Failed to apply patch: ${patch}. Aborting."
                 git am --abort &> /dev/null
