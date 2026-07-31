@@ -1,4 +1,4 @@
-From 98bb261b5dc5e665a1f33178240eaabd36ae904f Mon Sep 17 00:00:00 2001
+From d0230f4433d8923abf838fee2cab890385c3d6ee Mon Sep 17 00:00:00 2001
 From: blazerpaul15 <blazerpaul15@gmail.com>
 Date: Mon, 20 Jul 2026 10:41:11 +0900
 Subject: [PATCH 1/2] AxDiagnostics: Support explicit GPU sysfs nodes
@@ -17,8 +17,8 @@ correctly instead of falling back to 0.
 Change-Id: Iaa2f07e4ecb9ed3a75080b41d646328596ca9baa
 ---
  .../com/axion/diagnostics/data/GpuInfo.kt     | 50 +++++++++++--------
- .../axion/diagnostics/data/KernelConfig.kt    | 18 +++++--
- 2 files changed, 42 insertions(+), 26 deletions(-)
+ .../axion/diagnostics/data/KernelConfig.kt    | 20 +++++---
+ 2 files changed, 43 insertions(+), 27 deletions(-)
 
 diff --git a/app/src/main/java/com/axion/diagnostics/data/GpuInfo.kt b/app/src/main/java/com/axion/diagnostics/data/GpuInfo.kt
 index 622c537..a712a94 100644
@@ -91,7 +91,7 @@ index 622c537..a712a94 100644
 +    }
  }
 diff --git a/app/src/main/java/com/axion/diagnostics/data/KernelConfig.kt b/app/src/main/java/com/axion/diagnostics/data/KernelConfig.kt
-index 08da602..486bd4d 100644
+index 08da602..d617371 100644
 --- a/app/src/main/java/com/axion/diagnostics/data/KernelConfig.kt
 +++ b/app/src/main/java/com/axion/diagnostics/data/KernelConfig.kt
 @@ -35,6 +35,9 @@ data class GpuConfig(
@@ -132,7 +132,7 @@ index 08da602..486bd4d 100644
          var multiplier = 1L
          var values = emptyList<Int>()
  
-@@ -120,6 +125,9 @@ object KernelConfig {
+@@ -120,19 +125,22 @@ object KernelConfig {
                          node = parser.getAttributeValue(null, "node")
                          currentNode = parser.getAttributeValue(null, "currentNode")
                          usageNode = parser.getAttributeValue(null, "usageNode")
@@ -142,7 +142,14 @@ index 08da602..486bd4d 100644
                          val multStr = parser.getAttributeValue(null, "frequencyMultiplier")
                          multiplier = multStr?.toLongOrNull() ?: 1L
  
-@@ -133,6 +141,6 @@ object KernelConfig {
+                         val valStr = parser.getAttributeValue(null, "values")
+                         values = valStr?.split(",")
+                             ?.mapNotNull { it.trim().toLongOrNull() }
+-                            ?.map { scaleFreqToMhz(it) } ?: emptyList()
++                            ?.map { scaleFreqToMhz(it * multiplier) } ?: emptyList()
+                         break
+                     }
+                     eventType = parser.next()
                  }
              }
          }

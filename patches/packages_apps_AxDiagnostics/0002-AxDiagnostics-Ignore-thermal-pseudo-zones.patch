@@ -1,4 +1,4 @@
-From 0d4cd4577b3ea56ad905ecf0dfdd837ed7b576f5 Mon Sep 17 00:00:00 2001
+From c95891c579139e5bcca0f8273da70fcc4e457205 Mon Sep 17 00:00:00 2001
 From: blazerpaul15 <blazerpaul15@gmail.com>
 Date: Mon, 20 Jul 2026 12:38:32 +0900
 Subject: [PATCH 2/2] AxDiagnostics: Ignore thermal pseudo-zones
