@@ -1,0 +1,73 @@
+From 1ddd11b4c79ac24b339d28776c4933a8ba7a7e8b Mon Sep 17 00:00:00 2001
+From: blazerpaul15 <blazerpaul15@gmail.com>
+Date: Thu, 16 Jul 2026 19:02:54 +0900
+Subject: [PATCH] LineageParts: Add assist key camera shutter toggle [2]
+
+Search button > Plus Key
+
+Change-Id: Ic79a5b56c6afa5d434e619785ca6fd8f93896474
+---
+ res/values/strings.xml                                   | 4 +++-
+ res/xml/button_settings.xml                              | 6 ++++++
+ src/org/lineageos/lineageparts/input/ButtonSettings.java | 2 ++
+ 3 files changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/res/values/strings.xml b/res/values/strings.xml
+index a8abfca..08acf1a 100644
+--- a/res/values/strings.xml
++++ b/res/values/strings.xml
+@@ -182,7 +182,7 @@
+     <string name="hardware_keys_home_key_title">Home button</string>
+     <string name="hardware_keys_back_key_title">Back button</string>
+     <string name="hardware_keys_menu_key_title">Menu button</string>
+-    <string name="hardware_keys_assist_key_title">Search button</string>
++    <string name="hardware_keys_assist_key_title">Plus Key</string>
+     <string name="hardware_keys_appswitch_key_title">Recents button</string>
+     <string name="hardware_keys_camera_key_title">Camera button</string>
+     <string name="hardware_keys_volume_keys_title">Volume buttons</string>
+@@ -228,6 +228,8 @@
+     <string name="volume_panel_position_left">Left</string>
+     <string name="volume_panel_position_right">Right</string>
+     <string name="button_wake_title">Wake device</string>
++    <string name="assist_camera_shutter_title">Use as camera shutter</string>
++    <string name="assist_camera_shutter_summary">Take photos with the Plus Key when a camera is active</string>
+     <string name="volume_answer_call_title">Answer call</string>
+     <string name="volume_answer_call_summary">Answer incoming calls by pressing the volume buttons</string>
+     <string name="home_answer_call_title">Answer call</string>
+diff --git a/res/xml/button_settings.xml b/res/xml/button_settings.xml
+index 6986cd5..bf2abf2 100644
+--- a/res/xml/button_settings.xml
++++ b/res/xml/button_settings.xml
+@@ -207,6 +207,12 @@
+             android:title="@string/button_wake_title"
+             android:defaultValue="false" />
+ 
++        <lineageos.preference.LineageSystemSettingSwitchPreference
++            android:key="assist_camera_shutter"
++            android:title="@string/assist_camera_shutter_title"
++            android:summary="@string/assist_camera_shutter_summary"
++            android:defaultValue="false" />
++
+         <ListPreference
+             android:key="hardware_keys_assist_press"
+             android:dialogTitle="@string/hardware_keys_short_press_title"
+diff --git a/src/org/lineageos/lineageparts/input/ButtonSettings.java b/src/org/lineageos/lineageparts/input/ButtonSettings.java
+index 6f46d17..ffd9110 100644
+--- a/src/org/lineageos/lineageparts/input/ButtonSettings.java
++++ b/src/org/lineageos/lineageparts/input/ButtonSettings.java
+@@ -72,6 +72,7 @@ public class ButtonSettings extends SettingsPreferenceFragment
+     private static final String KEY_ASSIST_PRESS = "hardware_keys_assist_press";
+     private static final String KEY_ASSIST_LONG_PRESS = "hardware_keys_assist_long_press";
+     private static final String KEY_ASSIST_WAKE_SCREEN = "assist_wake_screen";
++    private static final String KEY_ASSIST_CAMERA_SHUTTER = "assist_camera_shutter";
+     private static final String KEY_APP_SWITCH_PRESS = "hardware_keys_app_switch_press";
+     private static final String KEY_APP_SWITCH_LONG_PRESS = "hardware_keys_app_switch_long_press";
+     private static final String KEY_APP_SWITCH_WAKE_SCREEN = "app_switch_wake_screen";
+@@ -915,6 +916,7 @@ public Set<String> getNonIndexableKeys(Context context) {
+                 result.add(KEY_ASSIST_PRESS);
+                 result.add(KEY_ASSIST_LONG_PRESS);
+                 result.add(KEY_ASSIST_WAKE_SCREEN);
++                result.add(KEY_ASSIST_CAMERA_SHUTTER);
+             } else if (!DeviceUtils.canWakeUsingAssistKey(context)) {
+                 result.add(KEY_ASSIST_WAKE_SCREEN);
+             }
