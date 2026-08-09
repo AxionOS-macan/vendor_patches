@@ -1,0 +1,101 @@
+From 4c60028bc192036fa4bd7618f5014e0d414902f7 Mon Sep 17 00:00:00 2001
+From: blazerpaul15 <blazerpaul15@gmail.com>
+Date: Sat, 4 Jul 2026 20:16:47 +0900
+Subject: [PATCH] fixing low-resolution app icons
+
+---
+ .../android/axion/sandbox/ui/SandboxApp.kt    | 29 +++++++++++--------
+ 1 file changed, 17 insertions(+), 12 deletions(-)
+
+diff --git a/src/com/android/axion/sandbox/ui/SandboxApp.kt b/src/com/android/axion/sandbox/ui/SandboxApp.kt
+index ec40f4c..f1962ab 100644
+--- a/src/com/android/axion/sandbox/ui/SandboxApp.kt
++++ b/src/com/android/axion/sandbox/ui/SandboxApp.kt
+@@ -110,9 +110,11 @@ import androidx.compose.ui.graphics.painter.BitmapPainter
+ import androidx.compose.ui.graphics.vector.ImageVector
+ import androidx.compose.ui.input.nestedscroll.nestedScroll
+ import androidx.compose.ui.platform.LocalContext
++import androidx.compose.ui.platform.LocalDensity
+ import androidx.compose.ui.platform.LocalLifecycleOwner
+ import androidx.compose.ui.res.stringResource
+ import androidx.compose.ui.text.style.TextOverflow
++import androidx.compose.ui.unit.Dp
+ import androidx.compose.ui.unit.dp
+ import androidx.core.graphics.drawable.toBitmap
+ import androidx.lifecycle.Lifecycle
+@@ -144,6 +146,15 @@ private const val TAG = "SandboxApp"
+ private const val SANDBOX_CONFIG_KEY = "sandbox_config"
+ private const val SHEET_HEIGHT_FRACTION = 0.75f
+ 
++@Composable
++private fun rememberAppIconBitmap(icon: Drawable, packageName: String, size: Dp) =
++    with(LocalDensity.current) {
++        val sizePx = size.roundToPx()
++        remember(icon, packageName, sizePx) {
++            icon.toBitmap(sizePx, sizePx).asImageBitmap()
++        }
++    }
++
+ data class AppInfo(
+     val packageName: String,
+     val label: String,
+@@ -778,9 +789,7 @@ fun AppDetailScreen(
+     onLaunch: (AppInfo) -> Unit,
+     isSecuritySetup: Boolean = false
+ ) {
+-    val bitmap = remember(app.packageName) {
+-        app.icon.toBitmap(128, 128)
+-    }
++    val bitmap = rememberAppIconBitmap(app.icon, app.packageName, 80.dp)
+     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+ 
+     Scaffold(
+@@ -822,7 +831,7 @@ fun AppDetailScreen(
+                     contentAlignment = Alignment.Center
+                 ) {
+                     Image(
+-                        painter = BitmapPainter(bitmap.asImageBitmap()),
++                        painter = BitmapPainter(bitmap),
+                         contentDescription = app.label,
+                         modifier = Modifier.size(80.dp)
+                     )
+@@ -1418,9 +1427,7 @@ private fun AppGridItem(
+     )
+     val hasAnyProtection = protectionStates.isNotEmpty()
+ 
+-    val bitmap = remember(app.packageName) {
+-        app.icon.toBitmap(64, 64)
+-    }
++    val bitmap = rememberAppIconBitmap(app.icon, app.packageName, 52.dp)
+ 
+     Column(
+         modifier = Modifier
+@@ -1432,7 +1439,7 @@ private fun AppGridItem(
+     ) {
+         Box {
+             Image(
+-                painter = BitmapPainter(bitmap.asImageBitmap()),
++                painter = BitmapPainter(bitmap),
+                 contentDescription = app.label,
+                 modifier = Modifier
+                     .size(52.dp)
+@@ -1514,9 +1521,7 @@ private fun AppQuickActionsSheet(
+     onLaunch: (AppInfo) -> Unit,
+     onDismiss: () -> Unit
+ ) {
+-    val bitmap = remember(app.packageName) {
+-        app.icon.toBitmap(80, 80)
+-    }
++    val bitmap = rememberAppIconBitmap(app.icon, app.packageName, 48.dp)
+     val context = LocalContext.current
+     val sandboxManager = remember {
+         context.getSystemService(android.app.AxSandboxManager::class.java)
+@@ -1540,7 +1545,7 @@ private fun AppQuickActionsSheet(
+                     verticalAlignment = Alignment.CenterVertically,
+                 ) {
+                     Image(
+-                        painter = BitmapPainter(bitmap.asImageBitmap()),
++                        painter = BitmapPainter(bitmap),
+                         contentDescription = app.label,
+                         modifier = Modifier
+                             .size(48.dp)
