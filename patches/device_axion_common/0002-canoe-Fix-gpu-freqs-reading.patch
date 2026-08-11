@@ -1,0 +1,23 @@
+From be4591e3468242ed5562631d242ecec493da5883 Mon Sep 17 00:00:00 2001
+From: blazerpaul15 <blazerpaul15@gmail.com>
+Date: Wed, 29 Jul 2026 10:45:48 +0900
+Subject: [PATCH] canoe: Fix gpu freqs reading
+
+Change-Id: I84f8552459a180957ae374c6134879c18d2ec7ba
+---
+ prebuilts/ax_kernel_manager_canoe.xml | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/prebuilts/ax_kernel_manager_canoe.xml b/prebuilts/ax_kernel_manager_canoe.xml
+index 00c18f7..8fa4729 100644
+--- a/prebuilts/ax_kernel_manager_canoe.xml
++++ b/prebuilts/ax_kernel_manager_canoe.xml
+@@ -38,6 +38,6 @@
+         minNode="/sys/class/kgsl/kgsl-3d0/min_clock_mhz"
+         maxNode="/sys/class/kgsl/kgsl-3d0/max_clock_mhz"
+         governorNode="/sys/class/kgsl/kgsl-3d0/pwrscale"
+-        frequencyMultiplier="1"
+-        values="195000000,301000000,403000000,500000000,589000000,646000000,714000000,732000000,795000000,826000000,891000000,925000000,975000000,1025000000,1075000000,1150000000,1225000000" />
++        frequencyMultiplier="1000000"
++        values="195,301,403,500,589,646,714,732,795,826,891,925,975,1025,1075,1150,1225" />
+ </kernel-manager>
