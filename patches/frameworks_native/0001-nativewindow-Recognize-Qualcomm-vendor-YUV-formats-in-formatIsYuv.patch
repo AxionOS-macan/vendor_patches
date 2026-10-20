@@ -1,7 +1,7 @@
-From 9d2be2c828a7a379a69a380351b49be6dd036d0f Mon Sep 17 00:00:00 2001
+From 63033f128f2072e24e2592908cfbee4964d50700 Mon Sep 17 00:00:00 2001
 From: realahnet <syedmusicrealise@gmail.com>
 Date: Tue, 23 Jun 2026 20:13:58 +0000
-Subject: [PATCH 1/5] nativewindow: Recognize Qualcomm vendor YUV formats in
+Subject: [PATCH] nativewindow: Recognize Qualcomm vendor YUV formats in
  formatIsYuv
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -25,12 +25,9 @@ already provided by the gralloc.
 GLM 5.2 was used in debugging of this issue.
 
 Change-Id: I0fee9cb533f5ab3496f43c4d4e9a34c3dbc7daed
----
- libs/nativewindow/AHardwareBuffer.cpp | 18 ++++++++++++++++++
- 1 file changed, 18 insertions(+)
 
 diff --git a/libs/nativewindow/AHardwareBuffer.cpp b/libs/nativewindow/AHardwareBuffer.cpp
-index a03b3a1ec0..8774b2262e 100644
+index a03b3a1ec0007ecdbdf1c64299fbd32a6e8f46f2..8774b2262e08ebae147c18b99d373aa12640478f 100644
 --- a/libs/nativewindow/AHardwareBuffer.cpp
 +++ b/libs/nativewindow/AHardwareBuffer.cpp
 @@ -762,6 +762,24 @@ bool AHardwareBuffer_formatIsYuv(uint32_t format) {

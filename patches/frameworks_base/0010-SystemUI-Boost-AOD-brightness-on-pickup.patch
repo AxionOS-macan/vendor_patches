@@ -1,19 +1,15 @@
-From f6b0e4f768eb96208e232738dba6a1e7e516eb11 Mon Sep 17 00:00:00 2001
+From 8fbd8def884c3e729428c7de6142e9b9e96ee6ff Mon Sep 17 00:00:00 2001
 From: Jonas Salo <salomannen1234@gmail.com>
 Date: Thu, 9 Jul 2026 22:36:25 +0200
 Subject: [PATCH] SystemUI: Boost AOD brightness on pickup
 
 Change-Id: Ice7bb6c049320f5b32fe6e4df9495f4af81532dc
----
- .../systemui/doze/DozeScreenBrightness.java   | 149 +++++++++++++++++-
- .../android/systemui/doze/DozeTriggers.java   |   6 +-
- 2 files changed, 152 insertions(+), 3 deletions(-)
 
 diff --git a/packages/SystemUI/src/com/android/systemui/doze/DozeScreenBrightness.java b/packages/SystemUI/src/com/android/systemui/doze/DozeScreenBrightness.java
-index f50e2444ff05a..5a05f073677ee 100644
+index f50e2444ff05a8c25c706e910a6b30344965c044..5a05f073677ee2bbcef6bd33b0d5a5d179a9d50f 100644
 --- a/packages/SystemUI/src/com/android/systemui/doze/DozeScreenBrightness.java
 +++ b/packages/SystemUI/src/com/android/systemui/doze/DozeScreenBrightness.java
-@@ -31,6 +31,8 @@
+@@ -31,6 +31,8 @@ import android.hardware.Sensor;
  import android.hardware.SensorEvent;
  import android.hardware.SensorEventListener;
  import android.hardware.SensorManager;
@@ -70,7 +66,7 @@ index f50e2444ff05a..5a05f073677ee 100644
  
      /**
       * Debug value used for emulating various display brightness buckets:
-@@ -150,6 +179,14 @@ public DozeScreenBrightness(
+@@ -150,6 +179,14 @@ public class DozeScreenBrightness extends BroadcastReceiver implements DozeMachi
          mContext = context;
          mDozeService = service;
          mSensorManager = sensorManager;
@@ -85,7 +81,7 @@ index f50e2444ff05a..5a05f073677ee 100644
          mDisplayManager = displayManager;
          mLightSensorOptional = lightSensorOptional;
          mDevicePostureController = devicePostureController;
-@@ -186,6 +223,12 @@ public DozeScreenBrightness(
+@@ -186,6 +223,12 @@ public class DozeScreenBrightness extends BroadcastReceiver implements DozeMachi
          mAodBrightnessObserver = new ContentObserver(mHandler) {
              @Override
              public void onChange(boolean selfChange) {
@@ -98,7 +94,7 @@ index f50e2444ff05a..5a05f073677ee 100644
                  updateBrightnessAndReady(true /* force */);
              }
          };
-@@ -195,6 +238,9 @@ public void onChange(boolean selfChange) {
+@@ -195,6 +238,9 @@ public class DozeScreenBrightness extends BroadcastReceiver implements DozeMachi
          mContext.getContentResolver().registerContentObserver(
                  Settings.System.getUriFor(AOD_HIGH_BRIGHTNESS), false,
                  mAodBrightnessObserver, UserHandle.USER_ALL);
@@ -108,7 +104,7 @@ index f50e2444ff05a..5a05f073677ee 100644
      }
  
      @Override
-@@ -231,6 +277,7 @@ public void transitionTo(DozeMachine.State oldState, DozeMachine.State newState)
+@@ -231,6 +277,7 @@ public class DozeScreenBrightness extends BroadcastReceiver implements DozeMachi
  
      private void onDestroy() {
          stopListeningForWallpaperSupportsAmbientMode();
@@ -116,7 +112,7 @@ index f50e2444ff05a..5a05f073677ee 100644
          setLightSensorEnabled(false);
          mDevicePostureController.removeCallback(mDevicePostureCallback);
          mContext.getContentResolver().unregisterContentObserver(mAodBrightnessObserver);
-@@ -243,6 +290,11 @@ private void onDestroy() {
+@@ -243,6 +290,11 @@ public class DozeScreenBrightness extends BroadcastReceiver implements DozeMachi
      @Override
      public void onSensorChanged(SensorEvent event) {
          TraceUtils.trace(() -> "DozeScreenBrightness.onSensorChanged" + event.values[0], () -> {
@@ -128,7 +124,7 @@ index f50e2444ff05a..5a05f073677ee 100644
              if (mRegistered) {
                  mLastSensorValue = (int) event.values[0];
                  updateBrightnessAndReady(false /* force */);
-@@ -283,6 +335,81 @@ public void updateBrightnessAndReady(boolean force) {
+@@ -283,6 +335,81 @@ public class DozeScreenBrightness extends BroadcastReceiver implements DozeMachi
          }
      }
  
@@ -210,7 +206,7 @@ index f50e2444ff05a..5a05f073677ee 100644
      private boolean lightSensorSupportsCurrentPosture() {
          return mLightSensorOptional != null
                  && mDevicePosture < mLightSensorOptional.length;
-@@ -332,12 +459,19 @@ private float computeBrightness(int sensorValue) {
+@@ -332,12 +459,19 @@ public class DozeScreenBrightness extends BroadcastReceiver implements DozeMachi
          if (sensorValue < 0 || sensorValue >= mSensorToBrightness.length) {
              return -1;
          }
@@ -232,7 +228,7 @@ index f50e2444ff05a..5a05f073677ee 100644
                      defaultValue,
                      UserHandle.USER_CURRENT);
              brightness = BrightnessSynchronizer.brightnessIntToFloat(
-@@ -346,6 +480,14 @@ private float computeBrightness(int sensorValue) {
+@@ -346,6 +480,14 @@ public class DozeScreenBrightness extends BroadcastReceiver implements DozeMachi
          return brightness;
      }
  
@@ -247,7 +243,7 @@ index f50e2444ff05a..5a05f073677ee 100644
      @Override
      public void onAccuracyChanged(Sensor sensor, int accuracy) {
      }
-@@ -411,10 +553,13 @@ private void setLightSensorEnabled(boolean enabled) {
+@@ -411,10 +553,13 @@ public class DozeScreenBrightness extends BroadcastReceiver implements DozeMachi
              mRegistered = mSensorManager.registerListener(this, getLightSensor(),
                      SensorManager.SENSOR_DELAY_NORMAL, mHandler);
              mLastSensorValue = -1;
@@ -262,10 +258,10 @@ index f50e2444ff05a..5a05f073677ee 100644
          }
      }
 diff --git a/packages/SystemUI/src/com/android/systemui/doze/DozeTriggers.java b/packages/SystemUI/src/com/android/systemui/doze/DozeTriggers.java
-index a95fcad197df5..60662a3173c2f 100644
+index 70e95cb89a17798c84730c43072b5c5a91acc88e..2a1acd56788c9becbebb4cb4f08d1fabcc18635f 100644
 --- a/packages/SystemUI/src/com/android/systemui/doze/DozeTriggers.java
 +++ b/packages/SystemUI/src/com/android/systemui/doze/DozeTriggers.java
-@@ -91,6 +91,7 @@ public class DozeTriggers implements DozeMachine.Part {
+@@ -92,6 +92,7 @@ public class DozeTriggers implements DozeMachine.Part {
      private DozeMachine mMachine;
      private final DozeLog mDozeLog;
      private final DozeSensors mDozeSensors;
@@ -273,7 +269,7 @@ index a95fcad197df5..60662a3173c2f 100644
      private final DozeHost mDozeHost;
      private final AmbientDisplayConfiguration mConfig;
      private final DozeParameters mDozeParameters;
-@@ -210,9 +211,11 @@ public DozeTriggers(Context context, DozeHost dozeHost,
+@@ -211,9 +212,11 @@ public class DozeTriggers implements DozeMachine.Part {
              KeyguardStateController keyguardStateController,
              DevicePostureController devicePostureController,
              UserTracker userTracker,
@@ -286,7 +282,7 @@ index a95fcad197df5..60662a3173c2f 100644
          mConfig = config;
          mDozeParameters = dozeParameters;
          mSensorManager = sensorManager;
-@@ -361,6 +364,7 @@ void onSensor(int pulseReason, boolean sensorPerformedProxCheck,
+@@ -362,6 +365,7 @@ public class DozeTriggers implements DozeMachine.Part {
                      } else {
                          gentleWakeUp(pulseReason);
                      }

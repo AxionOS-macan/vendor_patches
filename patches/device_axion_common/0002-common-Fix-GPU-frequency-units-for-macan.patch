@@ -1,0 +1,37 @@
+From 332d3d8f76521080bf22a53a0a5eb4e8db76c736 Mon Sep 17 00:00:00 2001
+From: blazerpaul15 <blazerpaul15@gmail.com>
+Date: Fri, 9 Oct 2026 22:55:52 +0900
+Subject: [PATCH] common: Fix GPU frequency units for macan
+
+Use MHz values with the correct frequency multiplier for the macan and macanc
+KGSL min/max clock nodes. This ensures GPU frequency controls display and write
+the expected values.
+
+Change-Id: I2fce4a225f88d175d4de09da3b74de1b520e0357
+
+diff --git a/prebuilts/ax_kernel_manager_macan.xml b/prebuilts/ax_kernel_manager_macan.xml
+index 00c18f7b4da068a9ac8d8a3076b264de3d7fc0f9..8fa4729be06382de352966fb9157f36b288c5e29 100644
+--- a/prebuilts/ax_kernel_manager_macan.xml
++++ b/prebuilts/ax_kernel_manager_macan.xml
+@@ -38,6 +38,6 @@
+         minNode="/sys/class/kgsl/kgsl-3d0/min_clock_mhz"
+         maxNode="/sys/class/kgsl/kgsl-3d0/max_clock_mhz"
+         governorNode="/sys/class/kgsl/kgsl-3d0/pwrscale"
+-        frequencyMultiplier="1"
+-        values="195000000,301000000,403000000,500000000,589000000,646000000,714000000,732000000,795000000,826000000,891000000,925000000,975000000,1025000000,1075000000,1150000000,1225000000" />
++        frequencyMultiplier="1000000"
++        values="195,301,403,500,589,646,714,732,795,826,891,925,975,1025,1075,1150,1225" />
+ </kernel-manager>
+diff --git a/prebuilts/ax_kernel_manager_macanc.xml b/prebuilts/ax_kernel_manager_macanc.xml
+index 00c18f7b4da068a9ac8d8a3076b264de3d7fc0f9..8fa4729be06382de352966fb9157f36b288c5e29 100644
+--- a/prebuilts/ax_kernel_manager_macanc.xml
++++ b/prebuilts/ax_kernel_manager_macanc.xml
+@@ -38,6 +38,6 @@
+         minNode="/sys/class/kgsl/kgsl-3d0/min_clock_mhz"
+         maxNode="/sys/class/kgsl/kgsl-3d0/max_clock_mhz"
+         governorNode="/sys/class/kgsl/kgsl-3d0/pwrscale"
+-        frequencyMultiplier="1"
+-        values="195000000,301000000,403000000,500000000,589000000,646000000,714000000,732000000,795000000,826000000,891000000,925000000,975000000,1025000000,1075000000,1150000000,1225000000" />
++        frequencyMultiplier="1000000"
++        values="195,301,403,500,589,646,714,732,795,826,891,925,975,1025,1075,1150,1225" />
+ </kernel-manager>

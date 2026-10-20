@@ -1,7 +1,7 @@
-From 5b2bce4886bbf978f89de509bf531380a0bf6638 Mon Sep 17 00:00:00 2001
+From 9198e30f35ba87f9fa021f8662afa20ea9e47753 Mon Sep 17 00:00:00 2001
 From: 1vivy <1vivy@tutanota.com>
 Date: Sun, 12 Jul 2026 10:16:22 +0000
-Subject: [PATCH 8/9] codec2: prefer semi-planar (NV12/VENUS) over YV12 for QTI
+Subject: [PATCH] codec2: prefer semi-planar (NV12/VENUS) over YV12 for QTI
  encoder input
 
 For an encoder, when the requested YUV420 planar format resolves to
@@ -20,12 +20,9 @@ upstream of this encode. Kept as a legit standalone fix.
 Plan: .omo/plans/crdroid-v3-infiniti-bp4a-build-now.md
 Change-Id: I7326665228caf58b4761e32885720a538f7e4b04
 (cherry picked from commit b1b6c08d33d31148f48a17fa938e15fca2bf60eb)
----
- media/codec2/sfplugin/CCodec.cpp | 11 +++++++++++
- 1 file changed, 11 insertions(+)
 
 diff --git a/media/codec2/sfplugin/CCodec.cpp b/media/codec2/sfplugin/CCodec.cpp
-index ea44e121d4..e40cb0ef54 100644
+index ea44e121d48ede933496fda2ce003ba4c7de3d36..e40cb0ef54db7b135da35c65e6b560baadf106cc 100644
 --- a/media/codec2/sfplugin/CCodec.cpp
 +++ b/media/codec2/sfplugin/CCodec.cpp
 @@ -1678,6 +1678,17 @@ void CCodec::configure(const sp<AMessage> &msg) {

@@ -7,12 +7,9 @@ Subject: [PATCH] OmniJaws: Fix daily forecast weather card
 * Filters out invalid entries.
 
 Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
----
- .../ui/components/DailyForecastCard.kt        | 24 ++++++++++++++-----
- 1 file changed, 18 insertions(+), 6 deletions(-)
 
 diff --git a/app/src/main/java/org/omnirom/omnijaws/ui/components/DailyForecastCard.kt b/app/src/main/java/org/omnirom/omnijaws/ui/components/DailyForecastCard.kt
-index dc321ea..b42e47c 100644
+index dc321eac2602b7585ac891de8f46d9339bbe75ac..b42e47c8bce47afa342a49ef8fec358e88f1aa5c 100644
 --- a/app/src/main/java/org/omnirom/omnijaws/ui/components/DailyForecastCard.kt
 +++ b/app/src/main/java/org/omnirom/omnijaws/ui/components/DailyForecastCard.kt
 @@ -63,10 +63,15 @@ fun DailyForecastCard(

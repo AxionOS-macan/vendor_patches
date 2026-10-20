@@ -1,17 +1,14 @@
-From 0bfd08d42b7645bea0ff707f3d93aa7de4dd0af9 Mon Sep 17 00:00:00 2001
+From 61bca0c7b3dd91fd3000f9264d63162adf6f7787 Mon Sep 17 00:00:00 2001
 From: Kill3rEz <98993017+Kill3rEz@users.noreply.github.com>
 Date: Fri, 5 Jun 2026 18:49:06 +0200
-Subject: [PATCH 4/5] Increase BINDER_VM_SIZE from 1MB to 4MB
+Subject: [PATCH] Increase BINDER_VM_SIZE from 1MB to 4MB
 
 Increase BINDER_VM_SIZE from 1MB to 4MB for fix RAW processing on Master Mode
 
 Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
----
- libs/binder/ProcessState.cpp | 2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/libs/binder/ProcessState.cpp b/libs/binder/ProcessState.cpp
-index f7d53472a5..8af14bd30f 100644
+index f7d53472a552afa390d3f679310cfa70568a85b3..8af14bd30fd58f8a8d02248be6a8a537478a8efd 100644
 --- a/libs/binder/ProcessState.cpp
 +++ b/libs/binder/ProcessState.cpp
 @@ -45,7 +45,7 @@

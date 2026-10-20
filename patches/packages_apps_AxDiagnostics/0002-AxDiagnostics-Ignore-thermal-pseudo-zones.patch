@@ -1,7 +1,7 @@
-From c95891c579139e5bcca0f8273da70fcc4e457205 Mon Sep 17 00:00:00 2001
+From 23f68c80e425b2a1983e5ec5c18a3afe467e7cfc Mon Sep 17 00:00:00 2001
 From: blazerpaul15 <blazerpaul15@gmail.com>
-Date: Mon, 20 Jul 2026 12:38:32 +0900
-Subject: [PATCH 2/2] AxDiagnostics: Ignore thermal pseudo-zones
+Date: Sun, 16 Aug 2026 22:02:26 +0900
+Subject: [PATCH] AxDiagnostics: Ignore thermal pseudo-zones
 
 Some devices expose trip, BCL, IBAT and scod limit signals through the
 thermal zone interface. These are not live temperature sensors and can
@@ -10,16 +10,12 @@ warnings.
 
 Exclude those pseudo-zones from hottest-zone and health calculations.
 
-Change-Id: I854b078431bd16177112e23fdf011e903fbd38aa
----
- .../java/com/axion/diagnostics/data/BatteryInfo.kt |  2 +-
- .../java/com/axion/diagnostics/data/ThermalInfo.kt | 14 +++++++++++++-
- 2 files changed, 14 insertions(+), 2 deletions(-)
+Change-Id: I38d50c6ba8d7363bb3ee438ebc11180825429428
 
-diff --git a/app/src/main/java/com/axion/diagnostics/data/BatteryInfo.kt b/app/src/main/java/com/axion/diagnostics/data/BatteryInfo.kt
-index 05a9e3f..a6e2c66 100644
---- a/app/src/main/java/com/axion/diagnostics/data/BatteryInfo.kt
-+++ b/app/src/main/java/com/axion/diagnostics/data/BatteryInfo.kt
+diff --git a/src/com/axion/diagnostics/data/BatteryInfo.kt b/src/com/axion/diagnostics/data/BatteryInfo.kt
+index f8ec637170e1b146e64985455e29a891feaa0635..58e3ac4b2ded4202d5f4e4e069ca3af75946f317 100644
+--- a/src/com/axion/diagnostics/data/BatteryInfo.kt
++++ b/src/com/axion/diagnostics/data/BatteryInfo.kt
 @@ -150,7 +150,7 @@ object BatteryCollector {
  }
  
@@ -29,11 +25,11 @@ index 05a9e3f..a6e2c66 100644
      val raw = rawCurrent.toLong()
      val absRaw = abs(raw)
      val currentMa = if (absRaw >= CURRENT_UA_THRESHOLD) {
-diff --git a/app/src/main/java/com/axion/diagnostics/data/ThermalInfo.kt b/app/src/main/java/com/axion/diagnostics/data/ThermalInfo.kt
-index e3814a3..bd1deb3 100644
---- a/app/src/main/java/com/axion/diagnostics/data/ThermalInfo.kt
-+++ b/app/src/main/java/com/axion/diagnostics/data/ThermalInfo.kt
-@@ -63,7 +63,9 @@ object ThermalCollector {
+diff --git a/src/com/axion/diagnostics/data/ThermalInfo.kt b/src/com/axion/diagnostics/data/ThermalInfo.kt
+index 4c1e8222f60931ebf8bc9ff021fac9e2d32ec4c5..d59beaf68e9152a4e7583acaaae8facd7700303d 100644
+--- a/src/com/axion/diagnostics/data/ThermalInfo.kt
++++ b/src/com/axion/diagnostics/data/ThermalInfo.kt
+@@ -76,7 +76,9 @@ object ThermalCollector {
                      if (tripIdx > 20) break
                  }
  
@@ -44,7 +40,7 @@ index e3814a3..bd1deb3 100644
              }
          }
  
-@@ -86,5 +88,15 @@ object ThermalCollector {
+@@ -99,6 +101,16 @@ object ThermalCollector {
          )
      }
  
@@ -58,5 +54,6 @@ index e3814a3..bd1deb3 100644
 +        return true
 +    }
 +
-     private fun readFileText(file: File): String = runCatching { file.readText().trim() }.getOrDefault("")
+     private fun readFileText(file: File): String =
+         runCatching { file.readText().trim() }.getOrDefault("")
  }
