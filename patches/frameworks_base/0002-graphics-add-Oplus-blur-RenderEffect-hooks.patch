@@ -1,16 +1,12 @@
-From 7e76e9617c5f5f1bd277abdcddf655e340a9c98f Mon Sep 17 00:00:00 2001
+From f020bbdb7da4698a762e473bf7f8dc5478c1cee3 Mon Sep 17 00:00:00 2001
 From: Jonas Salo <salomannen1234@gmail.com>
 Date: Wed, 8 Jul 2026 17:40:13 +0200
-Subject: [PATCH 2/8] graphics: add Oplus blur RenderEffect hooks
+Subject: [PATCH] graphics: add Oplus blur RenderEffect hooks
 
 Change-Id: Iecc9c3cd526417837fab7b2b4f92d091d73b63a7
----
- .../java/android/graphics/RenderEffect.java   | 51 ++++++++++++++
- libs/hwui/jni/RenderEffect.cpp                | 70 +++++++++++++++++++
- 2 files changed, 121 insertions(+)
 
 diff --git a/graphics/java/android/graphics/RenderEffect.java b/graphics/java/android/graphics/RenderEffect.java
-index 8c0e89031d42..bdeb9908ffb0 100644
+index 06bfb82ef6304b6a2c75a129aecf545780d422be..a82d9a6ec8fc357f3849b17aeb34d9896939ef98 100644
 --- a/graphics/java/android/graphics/RenderEffect.java
 +++ b/graphics/java/android/graphics/RenderEffect.java
 @@ -19,6 +19,7 @@ package android.graphics;
@@ -19,10 +15,10 @@ index 8c0e89031d42..bdeb9908ffb0 100644
  import android.graphics.Shader.TileMode;
 +import android.util.MathUtils;
  
- import java.util.LinkedHashMap;
- import java.util.Map;
-@@ -146,6 +147,52 @@ public final class RenderEffect {
-         }
+ import libcore.util.NativeAllocationRegistry;
+ 
+@@ -124,6 +125,52 @@ public final class RenderEffect {
+             );
      }
  
 +    /**
@@ -51,10 +47,10 @@ index 8c0e89031d42..bdeb9908ffb0 100644
 +                nativeInputEffect));
 +    }
 +
-+     /**
-+      * Create an Oplus-compatible Kawase blur effect.
-+      * @hide
-+      */
++    /**
++     * Create an Oplus-compatible Kawase blur effect.
++     * @hide
++     */
 +    @NonNull
 +    public static RenderEffect createKawaseBlurEffect(float radius,
 +            @Nullable RenderEffect inputEffect) {
@@ -62,10 +58,10 @@ index 8c0e89031d42..bdeb9908ffb0 100644
 +        return new RenderEffect(nativeCreateKawaseBlurEffect(radius, nativeInputEffect));
 +    }
 +
-+     /**
-+      * Create an Oplus-compatible Kawase blur effect.
-+      * @hide
-+      */
++    /**
++     * Create an Oplus-compatible Kawase blur effect.
++     * @hide
++     */
 +    @NonNull
 +    public static RenderEffect createKawaseBlurEffect(float radius) {
 +        return new RenderEffect(nativeCreateKawaseBlurEffect(radius, 0));
@@ -74,7 +70,7 @@ index 8c0e89031d42..bdeb9908ffb0 100644
      /**
       * Create a {@link RenderEffect} that renders the contents of the input {@link Bitmap}.
       * This is useful to create an input for other {@link RenderEffect} types such as
-@@ -384,6 +431,10 @@ public final class RenderEffect {
+@@ -328,6 +375,10 @@ public final class RenderEffect {
              float offsetX, float offsetY, long nativeInput);
      private static native long nativeCreateBlurEffect(
              float radiusX, float radiusY, long nativeInput, int edgeTreatment);
@@ -86,28 +82,30 @@ index 8c0e89031d42..bdeb9908ffb0 100644
              long bitmapHandle, float srcLeft, float srcTop, float srcRight, float srcBottom,
              float dstLeft, float dstTop, float dstRight, float dstBottom);
 diff --git a/libs/hwui/jni/RenderEffect.cpp b/libs/hwui/jni/RenderEffect.cpp
-index 3a1b6e9077a2..608f54f85f93 100644
+index 9469f7d2578b879357dda9ae0224104c684a5eaf..839f3ae32e288ebc8e83e27f447aa5c9f4de445f 100644
 --- a/libs/hwui/jni/RenderEffect.cpp
 +++ b/libs/hwui/jni/RenderEffect.cpp
-@@ -18,8 +18,11 @@
+@@ -14,13 +14,17 @@
+  * limitations under the License.
+  */
+ #include <algorithm>
++#include <cmath>
+ 
+ #include "Bitmap.h"
+ #include "ColorFilter.h"
  #include "GraphicsJNI.h"
- #include "Properties.h"
  #include "SkBlendMode.h"
 +#include "SkColor.h"
++#include "SkGradientShader.h"
  #include "SkImageFilter.h"
  #include "SkImageFilters.h"
 +#include "SkPoint.h"
-+#include "SkGradientShader.h"
  #include "graphics_jni_helpers.h"
  #include "utils/Blur.h"
  
-@@ -27,8 +30,38 @@
- #include <mutex>
- #include <unordered_map>
+@@ -28,6 +32,34 @@ using namespace android::uirenderer;
  
-+#include <algorithm>
-+
- using namespace android::uirenderer;
+ static constexpr float kMaxHwuiBlurSigma = 28.0f;
  
 +static sk_sp<SkImageFilter> maskGradientBlur(sk_sp<SkImageFilter> blurFilter,
 +        jfloat radiusLeft, jfloat radiusRight, jfloat radiusTop, jfloat radiusBottom) {
@@ -137,11 +135,11 @@ index 3a1b6e9077a2..608f54f85f93 100644
 +    return SkImageFilters::Blend(SkBlendMode::kDstIn, std::move(blurFilter), std::move(maskFilter));
 +}
 +
- namespace {
- 
- struct LayerScaledBlurEffect {
-@@ -136,6 +169,41 @@ static jlong createBlurEffect(JNIEnv* env , jobject, jfloat radiusX,
-     return reinterpret_cast<jlong>(filter);
+ static jlong createOffsetEffect(
+     JNIEnv* env,
+     jobject,
+@@ -55,6 +87,46 @@ static jlong createBlurEffect(JNIEnv* env , jobject, jfloat radiusX,
+     return reinterpret_cast<jlong>(blurFilter.release());
  }
  
 +static jlong createGradientBlurEffect(JNIEnv* env, jobject, jfloat radiusLeft,
@@ -152,11 +150,15 @@ index 3a1b6e9077a2..608f54f85f93 100644
 +    float radiusX = std::max(0.0f, std::max(radiusLeft, radiusRight));
 +    float radiusY = std::max(0.0f, std::max(radiusTop, radiusBottom));
 +    float blurScale = speed > 0.0f ? speed : 1.0f;
++    const float sigmaX = std::min(
++            kMaxHwuiBlurSigma, Blur::convertRadiusToSigma(radiusX * blurScale));
++    const float sigmaY = std::min(
++            kMaxHwuiBlurSigma, Blur::convertRadiusToSigma(radiusY * blurScale));
 +
 +    sk_sp<SkImageFilter> blurFilter =
 +            SkImageFilters::Blur(
-+                    Blur::convertRadiusToSigma(radiusX * blurScale),
-+                    Blur::convertRadiusToSigma(radiusY * blurScale),
++                    sigmaX,
++                    sigmaY,
 +                    SkTileMode::kMirror,
 +                    sk_ref_sp(inputImageFilter),
 +                    nullptr);
@@ -169,10 +171,11 @@ index 3a1b6e9077a2..608f54f85f93 100644
 +        jlong inputFilterHandle) {
 +    auto* inputImageFilter = reinterpret_cast<SkImageFilter*>(inputFilterHandle);
 +    float safeRadius = std::max(0.0f, radius);
++    const float sigma = std::min(kMaxHwuiBlurSigma, Blur::convertRadiusToSigma(safeRadius));
 +    sk_sp<SkImageFilter> blurFilter =
 +            SkImageFilters::Blur(
-+                    Blur::convertRadiusToSigma(safeRadius),
-+                    Blur::convertRadiusToSigma(safeRadius),
++                    sigma,
++                    sigma,
 +                    SkTileMode::kMirror,
 +                    sk_ref_sp(inputImageFilter),
 +                    nullptr);
@@ -182,7 +185,7 @@ index 3a1b6e9077a2..608f54f85f93 100644
  static jlong createBitmapEffect(
      JNIEnv* env,
      jobject,
-@@ -256,6 +324,8 @@ static const JNINativeMethod gRenderEffectMethods[] = {
+@@ -174,6 +246,8 @@ static const JNINativeMethod gRenderEffectMethods[] = {
          {"nativeGetFinalizer", "()J", (void*)getRenderEffectFinalizer},
          {"nativeCreateOffsetEffect", "(FFJ)J", (void*)createOffsetEffect},
          {"nativeCreateBlurEffect", "(FFJI)J", (void*)createBlurEffect},

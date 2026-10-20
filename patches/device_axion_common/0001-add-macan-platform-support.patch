@@ -1,0 +1,393 @@
+From df23f9cf5c830d9debde94f9a8f06df3eb0f00a1 Mon Sep 17 00:00:00 2001
+From: blazerpaul15 <blazerpaul15@gmail.com>
+Date: Mon, 20 Jul 2026 05:33:59 +0900
+Subject: [PATCH] add macan platform support
+
+Change-Id: I1c6bbe32e6a163f35497a342a5eaef2cd3ebc21e
+
+diff --git a/init/ax_init_macan.rc b/init/ax_init_macan.rc
+new file mode 100644
+index 0000000000000000000000000000000000000000..dbef6d813124d0506bf3a53d589e4ae036a34f0e
+--- /dev/null
++++ b/init/ax_init_macan.rc
+@@ -0,0 +1,17 @@
++on post-fs-data
++    chown system system /sys/devices/system/cpu/cpufreq/policy0/scaling_governor
++    chown system system /sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq
++    chown system system /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq
++    chown system system /sys/devices/system/cpu/cpufreq/policy6/scaling_governor
++    chown system system /sys/devices/system/cpu/cpufreq/policy6/scaling_min_freq
++    chown system system /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq
++    chown system system /sys/class/kgsl/kgsl-3d0/min_clock_mhz
++    chown system system /sys/class/kgsl/kgsl-3d0/max_clock_mhz
++    chmod 0660 /sys/devices/system/cpu/cpufreq/policy0/scaling_governor
++    chmod 0660 /sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq
++    chmod 0660 /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq
++    chmod 0660 /sys/devices/system/cpu/cpufreq/policy6/scaling_governor
++    chmod 0660 /sys/devices/system/cpu/cpufreq/policy6/scaling_min_freq
++    chmod 0660 /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq
++    chmod 0660 /sys/class/kgsl/kgsl-3d0/min_clock_mhz
++    chmod 0660 /sys/class/kgsl/kgsl-3d0/max_clock_mhz
+diff --git a/init/ax_init_macanc.rc b/init/ax_init_macanc.rc
+new file mode 100644
+index 0000000000000000000000000000000000000000..dbef6d813124d0506bf3a53d589e4ae036a34f0e
+--- /dev/null
++++ b/init/ax_init_macanc.rc
+@@ -0,0 +1,17 @@
++on post-fs-data
++    chown system system /sys/devices/system/cpu/cpufreq/policy0/scaling_governor
++    chown system system /sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq
++    chown system system /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq
++    chown system system /sys/devices/system/cpu/cpufreq/policy6/scaling_governor
++    chown system system /sys/devices/system/cpu/cpufreq/policy6/scaling_min_freq
++    chown system system /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq
++    chown system system /sys/class/kgsl/kgsl-3d0/min_clock_mhz
++    chown system system /sys/class/kgsl/kgsl-3d0/max_clock_mhz
++    chmod 0660 /sys/devices/system/cpu/cpufreq/policy0/scaling_governor
++    chmod 0660 /sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq
++    chmod 0660 /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq
++    chmod 0660 /sys/devices/system/cpu/cpufreq/policy6/scaling_governor
++    chmod 0660 /sys/devices/system/cpu/cpufreq/policy6/scaling_min_freq
++    chmod 0660 /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq
++    chmod 0660 /sys/class/kgsl/kgsl-3d0/min_clock_mhz
++    chmod 0660 /sys/class/kgsl/kgsl-3d0/max_clock_mhz
+diff --git a/prebuilts/ax_kernel_manager_macan.xml b/prebuilts/ax_kernel_manager_macan.xml
+new file mode 100644
+index 0000000000000000000000000000000000000000..00c18f7b4da068a9ac8d8a3076b264de3d7fc0f9
+--- /dev/null
++++ b/prebuilts/ax_kernel_manager_macan.xml
+@@ -0,0 +1,43 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++    Kernel Manager config - canoe
++
++    2 policies, 8 cores:
++      policy0 -> Little
++      policy6 -> Big
++-->
++<kernel-manager>
++    <cpu
++        id="little"
++        group="Little CPU"
++        minId="axion_min_freq"
++        maxId="axion_max_freq"
++        governorId="little_cpu_governor"
++        minNode="/sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq"
++        maxNode="/sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq"
++        availablePath="/sys/devices/system/cpu/cpufreq/policy0/scaling_available_frequencies"
++        governorNode="/sys/devices/system/cpu/cpufreq/policy0/scaling_governor"
++        governorAvailablePath="/sys/devices/system/cpu/cpufreq/policy0/scaling_available_governors" />
++
++    <cpu
++        id="big"
++        group="Big CPU"
++        minId="axion_min_freq_big"
++        maxId="axion_max_freq_big"
++        governorId="big_cpu_governor"
++        minNode="/sys/devices/system/cpu/cpufreq/policy6/scaling_min_freq"
++        maxNode="/sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq"
++        availablePath="/sys/devices/system/cpu/cpufreq/policy6/scaling_available_frequencies"
++        governorNode="/sys/devices/system/cpu/cpufreq/policy6/scaling_governor"
++        governorAvailablePath="/sys/devices/system/cpu/cpufreq/policy6/scaling_available_governors" />
++
++    <gpu
++        node="/sys/class/kgsl/kgsl-3d0"
++        currentNode="/sys/class/kgsl/kgsl-3d0/gpuclk"
++        usageNode="/sys/class/kgsl/kgsl-3d0/gpu_busy_percentage"
++        minNode="/sys/class/kgsl/kgsl-3d0/min_clock_mhz"
++        maxNode="/sys/class/kgsl/kgsl-3d0/max_clock_mhz"
++        governorNode="/sys/class/kgsl/kgsl-3d0/pwrscale"
++        frequencyMultiplier="1"
++        values="195000000,301000000,403000000,500000000,589000000,646000000,714000000,732000000,795000000,826000000,891000000,925000000,975000000,1025000000,1075000000,1150000000,1225000000" />
++</kernel-manager>
+diff --git a/prebuilts/ax_kernel_manager_macanc.xml b/prebuilts/ax_kernel_manager_macanc.xml
+new file mode 100644
+index 0000000000000000000000000000000000000000..00c18f7b4da068a9ac8d8a3076b264de3d7fc0f9
+--- /dev/null
++++ b/prebuilts/ax_kernel_manager_macanc.xml
+@@ -0,0 +1,43 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++    Kernel Manager config - canoe
++
++    2 policies, 8 cores:
++      policy0 -> Little
++      policy6 -> Big
++-->
++<kernel-manager>
++    <cpu
++        id="little"
++        group="Little CPU"
++        minId="axion_min_freq"
++        maxId="axion_max_freq"
++        governorId="little_cpu_governor"
++        minNode="/sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq"
++        maxNode="/sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq"
++        availablePath="/sys/devices/system/cpu/cpufreq/policy0/scaling_available_frequencies"
++        governorNode="/sys/devices/system/cpu/cpufreq/policy0/scaling_governor"
++        governorAvailablePath="/sys/devices/system/cpu/cpufreq/policy0/scaling_available_governors" />
++
++    <cpu
++        id="big"
++        group="Big CPU"
++        minId="axion_min_freq_big"
++        maxId="axion_max_freq_big"
++        governorId="big_cpu_governor"
++        minNode="/sys/devices/system/cpu/cpufreq/policy6/scaling_min_freq"
++        maxNode="/sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq"
++        availablePath="/sys/devices/system/cpu/cpufreq/policy6/scaling_available_frequencies"
++        governorNode="/sys/devices/system/cpu/cpufreq/policy6/scaling_governor"
++        governorAvailablePath="/sys/devices/system/cpu/cpufreq/policy6/scaling_available_governors" />
++
++    <gpu
++        node="/sys/class/kgsl/kgsl-3d0"
++        currentNode="/sys/class/kgsl/kgsl-3d0/gpuclk"
++        usageNode="/sys/class/kgsl/kgsl-3d0/gpu_busy_percentage"
++        minNode="/sys/class/kgsl/kgsl-3d0/min_clock_mhz"
++        maxNode="/sys/class/kgsl/kgsl-3d0/max_clock_mhz"
++        governorNode="/sys/class/kgsl/kgsl-3d0/pwrscale"
++        frequencyMultiplier="1"
++        values="195000000,301000000,403000000,500000000,589000000,646000000,714000000,732000000,795000000,826000000,891000000,925000000,975000000,1025000000,1075000000,1150000000,1225000000" />
++</kernel-manager>
+diff --git a/prebuilts/ax_perf_thermal_macan.xml b/prebuilts/ax_perf_thermal_macan.xml
+new file mode 100644
+index 0000000000000000000000000000000000000000..c4f7c876861fdb81f1e884e07ce13ce5a45f4cdf
+--- /dev/null
++++ b/prebuilts/ax_perf_thermal_macan.xml
+@@ -0,0 +1,115 @@
++<?xml version='1.0' encoding='utf-8'?>
++<perf-config>
++    <atmc>
++        <cpu_levels>
++            <level id="1" little="0,3321600" big="0,3436800" />
++            <level id="2" little="0,3129600" big="0,3244800" />
++            <level id="3" little="0,3033600" big="0,3091200" />
++            <level id="4" little="0,2841600" big="0,2995200" />
++            <level id="5" little="0,2707200" big="0,2841600" />
++            <level id="6" little="0,2611200" big="0,2688000" />
++            <level id="7" little="0,2476800" big="0,2476800" />
++            <level id="8" little="0,2361600" big="0,2227200" />
++            <level id="9" little="0,2265600" big="0,2112000" />
++            <level id="10" little="0,2188800" big="0,1996800" />
++            <level id="11" little="0,2016000" big="0,1862400" />
++            <level id="12" little="0,1900800" big="0,1651200" />
++            <level id="13" little="0,1747200" big="0,1497600" />
++            <level id="14" little="0,1651200" big="0,1382400" />
++            <level id="15" little="0,1555200" big="0,1248000" />
++            <level id="16" little="0,1401600" big="0,1152000" />
++            <level id="17" little="0,1267200" big="0,1017600" />
++            <level id="18" little="0,1152000" big="0,921600" />
++            <level id="19" little="0,1036800" big="0,806400" />
++            <level id="20" little="0,902400" big="0,556800" />
++            <level id="21" little="0,806400" big="0,384000" />
++            <level id="22" little="0,691200" big="0,384000" />
++            <level id="23" little="0,556800" big="0,384000" />
++            <level id="24" little="0,384000" big="0,384000" />
++            <level id="25" little="0,384000" big="0,384000" />
++            <level id="26" little="0,384000" big="0,384000" />
++            <level id="27" little="0,384000" big="0,384000" />
++        </cpu_levels>
++        <gpu_levels>
++            <level id="1" min="1225" max="1225" />
++            <level id="2" min="1150" max="1150" />
++            <level id="3" min="1075" max="1075" />
++            <level id="4" min="1025" max="1025" />
++            <level id="5" min="975" max="975" />
++            <level id="6" min="925" max="925" />
++            <level id="7" min="891" max="891" />
++            <level id="8" min="826" max="826" />
++            <level id="9" min="795" max="795" />
++            <level id="10" min="732" max="732" />
++            <level id="11" min="714" max="714" />
++            <level id="12" min="646" max="646" />
++            <level id="13" min="589" max="589" />
++            <level id="14" min="500" max="500" />
++            <level id="15" min="403" max="403" />
++            <level id="16" min="301" max="301" />
++            <level id="17" min="195" max="195" />
++        </gpu_levels>
++        <scenes>
++            <scene name="default_scene">
++                <level id="4">
++                    <action unit="cpu" status="2" />
++                </level>
++                <level id="7">
++                    <action unit="cpu" status="3" />
++                    <action unit="bg_killer" status="1" />
++                </level>
++                <level id="11">
++                    <action unit="cpu" status="5" />
++                    <action unit="dexopt" status="1" />
++                    <action unit="bg_killer" status="3" />
++                </level>
++                <level id="14">
++                    <action unit="cpu" status="7" />
++                    <action unit="bg_killer" status="4" />
++                </level>
++            </scene>
++            <scene name="game">
++                <level id="4">
++                    <action unit="cpu" status="1" />
++                    <action unit="gpu" status="1" />
++                </level>
++                <level id="7">
++                    <action unit="cpu" status="2" />
++                    <action unit="gpu" status="1" />
++                </level>
++                <level id="11">
++                    <action unit="cpu" status="4" />
++                    <action unit="gpu" status="2" />
++                </level>
++                <level id="14">
++                    <action unit="cpu" status="7" />
++                    <action unit="gpu" status="4" />
++                </level>
++            </scene>
++            <scene name="heating_fgs">
++                <level id="5">
++                    <action unit="cpu" status="3" />
++                </level>
++                <level id="11">
++                    <action unit="cpu" status="6" />
++                </level>
++            </scene>
++            <scene name="axcamera_photo_preview">
++                <level id="5">
++                    <action unit="cpu" status="3" />
++                </level>
++                <level id="11">
++                    <action unit="cpu" status="5" />
++                </level>
++            </scene>
++        </scenes>
++        <apps>
++            <app pkgs="com.antutu.ABenchMark,com.andromeda.androbench2,com.primatelabs.geekbench5,com.primatelabs.geekbench6,net.kishonti.gfxbench.v50000.corporate" scene="default_scene" />
++            <app pkgs="com.futuremark.dmandroid.application" scene="game" />
++            <app pkgs="com.facebook.katana,com.facebook.orca,com.instagram.android,com.whatsApp,com.snapchat.android,us.zoom.videomeetings,com.microsoft.teams" scene="default_scene" />
++            <app pkgs="com.google.android.apps.maps,com.waze" scene="default_scene" />
++            <app pkgs="com.android.camera,org.codeaurora.snapcam,com.oplus.camera,org.lineageos.aperture,com.xiaomi.camera" scene="axcamera_photo_preview" />
++            <app pkgs="com.HoYoverse.hkrpgoversea,com.miHoYo.Yuanshen,com.miHoYo.GenshinImpact,com.miHoYo.hkrpg,com.epicgames.fortnite,com.mobile.legends,com.dts.freefireth,com.mojang.minecraftpe,com.tencent.tmgp.sgame,com.levelinfinite.sgameGlobal,com.tencent.ig,com.pubg.imobile,com.tencent.tmgp.pubgmhd,com.activision.callofduty.shooter,com.garena.game.codm" scene="game" />
++        </apps>
++    </atmc>
++</perf-config>
+diff --git a/prebuilts/ax_perf_thermal_macanc.xml b/prebuilts/ax_perf_thermal_macanc.xml
+new file mode 100644
+index 0000000000000000000000000000000000000000..c4f7c876861fdb81f1e884e07ce13ce5a45f4cdf
+--- /dev/null
++++ b/prebuilts/ax_perf_thermal_macanc.xml
+@@ -0,0 +1,115 @@
++<?xml version='1.0' encoding='utf-8'?>
++<perf-config>
++    <atmc>
++        <cpu_levels>
++            <level id="1" little="0,3321600" big="0,3436800" />
++            <level id="2" little="0,3129600" big="0,3244800" />
++            <level id="3" little="0,3033600" big="0,3091200" />
++            <level id="4" little="0,2841600" big="0,2995200" />
++            <level id="5" little="0,2707200" big="0,2841600" />
++            <level id="6" little="0,2611200" big="0,2688000" />
++            <level id="7" little="0,2476800" big="0,2476800" />
++            <level id="8" little="0,2361600" big="0,2227200" />
++            <level id="9" little="0,2265600" big="0,2112000" />
++            <level id="10" little="0,2188800" big="0,1996800" />
++            <level id="11" little="0,2016000" big="0,1862400" />
++            <level id="12" little="0,1900800" big="0,1651200" />
++            <level id="13" little="0,1747200" big="0,1497600" />
++            <level id="14" little="0,1651200" big="0,1382400" />
++            <level id="15" little="0,1555200" big="0,1248000" />
++            <level id="16" little="0,1401600" big="0,1152000" />
++            <level id="17" little="0,1267200" big="0,1017600" />
++            <level id="18" little="0,1152000" big="0,921600" />
++            <level id="19" little="0,1036800" big="0,806400" />
++            <level id="20" little="0,902400" big="0,556800" />
++            <level id="21" little="0,806400" big="0,384000" />
++            <level id="22" little="0,691200" big="0,384000" />
++            <level id="23" little="0,556800" big="0,384000" />
++            <level id="24" little="0,384000" big="0,384000" />
++            <level id="25" little="0,384000" big="0,384000" />
++            <level id="26" little="0,384000" big="0,384000" />
++            <level id="27" little="0,384000" big="0,384000" />
++        </cpu_levels>
++        <gpu_levels>
++            <level id="1" min="1225" max="1225" />
++            <level id="2" min="1150" max="1150" />
++            <level id="3" min="1075" max="1075" />
++            <level id="4" min="1025" max="1025" />
++            <level id="5" min="975" max="975" />
++            <level id="6" min="925" max="925" />
++            <level id="7" min="891" max="891" />
++            <level id="8" min="826" max="826" />
++            <level id="9" min="795" max="795" />
++            <level id="10" min="732" max="732" />
++            <level id="11" min="714" max="714" />
++            <level id="12" min="646" max="646" />
++            <level id="13" min="589" max="589" />
++            <level id="14" min="500" max="500" />
++            <level id="15" min="403" max="403" />
++            <level id="16" min="301" max="301" />
++            <level id="17" min="195" max="195" />
++        </gpu_levels>
++        <scenes>
++            <scene name="default_scene">
++                <level id="4">
++                    <action unit="cpu" status="2" />
++                </level>
++                <level id="7">
++                    <action unit="cpu" status="3" />
++                    <action unit="bg_killer" status="1" />
++                </level>
++                <level id="11">
++                    <action unit="cpu" status="5" />
++                    <action unit="dexopt" status="1" />
++                    <action unit="bg_killer" status="3" />
++                </level>
++                <level id="14">
++                    <action unit="cpu" status="7" />
++                    <action unit="bg_killer" status="4" />
++                </level>
++            </scene>
++            <scene name="game">
++                <level id="4">
++                    <action unit="cpu" status="1" />
++                    <action unit="gpu" status="1" />
++                </level>
++                <level id="7">
++                    <action unit="cpu" status="2" />
++                    <action unit="gpu" status="1" />
++                </level>
++                <level id="11">
++                    <action unit="cpu" status="4" />
++                    <action unit="gpu" status="2" />
++                </level>
++                <level id="14">
++                    <action unit="cpu" status="7" />
++                    <action unit="gpu" status="4" />
++                </level>
++            </scene>
++            <scene name="heating_fgs">
++                <level id="5">
++                    <action unit="cpu" status="3" />
++                </level>
++                <level id="11">
++                    <action unit="cpu" status="6" />
++                </level>
++            </scene>
++            <scene name="axcamera_photo_preview">
++                <level id="5">
++                    <action unit="cpu" status="3" />
++                </level>
++                <level id="11">
++                    <action unit="cpu" status="5" />
++                </level>
++            </scene>
++        </scenes>
++        <apps>
++            <app pkgs="com.antutu.ABenchMark,com.andromeda.androbench2,com.primatelabs.geekbench5,com.primatelabs.geekbench6,net.kishonti.gfxbench.v50000.corporate" scene="default_scene" />
++            <app pkgs="com.futuremark.dmandroid.application" scene="game" />
++            <app pkgs="com.facebook.katana,com.facebook.orca,com.instagram.android,com.whatsApp,com.snapchat.android,us.zoom.videomeetings,com.microsoft.teams" scene="default_scene" />
++            <app pkgs="com.google.android.apps.maps,com.waze" scene="default_scene" />
++            <app pkgs="com.android.camera,org.codeaurora.snapcam,com.oplus.camera,org.lineageos.aperture,com.xiaomi.camera" scene="axcamera_photo_preview" />
++            <app pkgs="com.HoYoverse.hkrpgoversea,com.miHoYo.Yuanshen,com.miHoYo.GenshinImpact,com.miHoYo.hkrpg,com.epicgames.fortnite,com.mobile.legends,com.dts.freefireth,com.mojang.minecraftpe,com.tencent.tmgp.sgame,com.levelinfinite.sgameGlobal,com.tencent.ig,com.pubg.imobile,com.tencent.tmgp.pubgmhd,com.activision.callofduty.shooter,com.garena.game.codm" scene="game" />
++        </apps>
++    </atmc>
++</perf-config>

@@ -1,0 +1,31 @@
+From 5f9a4bfc5ce9807d4946651ab8a4e9322d47b83e Mon Sep 17 00:00:00 2001
+From: blazerpaul15 <blazerpaul15@gmail.com>
+Date: Thu, 8 Oct 2026 19:39:58 +0900
+Subject: [PATCH] Fix default cpu gov not setting up properly on boot
+
+Change-Id: I0787777ea21590e291e8f7041ba979333e2a0341
+
+diff --git a/src/com/android/axion/axionparts/ui/screens/KernelManagerScreen.kt b/src/com/android/axion/axionparts/ui/screens/KernelManagerScreen.kt
+index 8761d0b93a0f44114d9f448f97b113cbe84dbf3c..81d63fdc15df40ed6ecf01f0c27e6fba118fc6c4 100644
+--- a/src/com/android/axion/axionparts/ui/screens/KernelManagerScreen.kt
++++ b/src/com/android/axion/axionparts/ui/screens/KernelManagerScreen.kt
+@@ -467,9 +467,8 @@ private fun GovernorPreference(
+     if (values.isEmpty() || labels.isEmpty()) {
+         return
+     }
+-    val secureFlow = rememberSettingsFlow(SettingsType.SECURE)
+-    val savedGov by rememberSettingInt(control.id, SettingsType.SECURE, control.defaultValue)
+-    val currentGov = if (savedGov in values) savedGov else control.defaultValue
++    val currentGov =
++        if (control.currentValue in values) control.currentValue else control.defaultValue
+     val currentLabel = labels.getOrNull(values.indexOf(currentGov)) ?: labels.first()
+     ListPreference(
+         title = stringResource(R.string.cpu_governor),
+@@ -481,7 +480,6 @@ private fun GovernorPreference(
+         value = currentGov.toString(),
+         onValueChange = { value ->
+             val govIndex = value.toInt()
+-            secureFlow.putInt(control.id, govIndex)
+             setKernelControl(kernelManager, control, govIndex, onKernelControlsChanged)
+         },
+     )

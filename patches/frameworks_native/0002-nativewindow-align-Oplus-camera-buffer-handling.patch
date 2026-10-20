@@ -1,15 +1,11 @@
-From bb5d7c97d2fd88fe65d5abea2dc6495f6990262b Mon Sep 17 00:00:00 2001
+From 537982a06277404c7989be3cb978b94e6913e5dd Mon Sep 17 00:00:00 2001
 From: Jonas Salo <salomannen1234@gmail.com>
 Date: Fri, 26 Jun 2026 17:16:13 +0200
-Subject: [PATCH 2/5] nativewindow: align Oplus camera buffer handling
+Subject: [PATCH] nativewindow: align Oplus camera buffer handling
 
----
- libs/nativewindow/AHardwareBuffer.cpp | 24 ++++++++----------------
- libs/ui/include/ui/BufferQueueDefs.h  |  5 ++++-
- 2 files changed, 12 insertions(+), 17 deletions(-)
 
 diff --git a/libs/nativewindow/AHardwareBuffer.cpp b/libs/nativewindow/AHardwareBuffer.cpp
-index 8774b2262e..50bc6217c6 100644
+index 8774b2262e08ebae147c18b99d373aa12640478f..50bc6217c642016de4a55c913b8de58b449dbbb0 100644
 --- a/libs/nativewindow/AHardwareBuffer.cpp
 +++ b/libs/nativewindow/AHardwareBuffer.cpp
 @@ -762,23 +762,15 @@ bool AHardwareBuffer_formatIsYuv(uint32_t format) {
@@ -45,7 +41,7 @@ index 8774b2262e..50bc6217c6 100644
          default:
              return false;
 diff --git a/libs/ui/include/ui/BufferQueueDefs.h b/libs/ui/include/ui/BufferQueueDefs.h
-index 0fecda9cf1..a383041bfc 100644
+index 0fecda9cf1c681b786ca54c21a2835901bd668ee..a383041bfca192487f0fe9699aac1f14164e74e3 100644
 --- a/libs/ui/include/ui/BufferQueueDefs.h
 +++ b/libs/ui/include/ui/BufferQueueDefs.h
 @@ -22,7 +22,10 @@ namespace android {
