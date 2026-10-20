@@ -1,0 +1,1700 @@
+From 0a10e76cd181fc28dfbb6733ee2d3ec71396b0a8 Mon Sep 17 00:00:00 2001
+From: blazerpaul15 <blazerpaul15@gmail.com>
+Date: Tue, 6 Oct 2026 19:02:26 +0900
+Subject: [PATCH] [ax_vrr] Bring back ax_vrr implementations
+
+* Add configurable refresh rates
+
+Change-Id: I5a73433bab914e8a6c39c1c140f08830ec28c4bc
+
+diff --git a/core/res/res/values/config.xml b/core/res/res/values/config.xml
+index 5f42e435675efa361e22d95a49fe5ab5027817bf..f3e9b780242251f45f8da72e376bdb7cbef8c956 100644
+--- a/core/res/res/values/config.xml
++++ b/core/res/res/values/config.xml
+@@ -5854,6 +5854,14 @@
+      and a second time clipped to the fill level to indicate charge -->
+     <bool name="config_batterymeterDualTone">false</bool>
+ 
++    <!-- Axion dynamic refresh-rate policy. Dynamic mode can expose a full range and a
++         lower-power range; per-app/manual refresh-rate selections still use the panel list. -->
++    <integer name="config_axDynamicMaxRefreshRate">120</integer>
++    <integer name="config_axDynamicLowRefreshRate">90</integer>
++    <integer name="config_axInteractiveRefreshRate">120</integer>
++    <string-array name="config_axDynamicFullRangePackages" translatable="false" />
++    <string-array name="config_axDynamicLowRefreshPackages" translatable="false" />
++
+     <!-- The default refresh rate for a given device. Change this value to set a higher default
+          refresh rate. If the hardware composer on the device supports display modes with a higher
+          refresh rate than the default value specified here, the framework may use those higher
+diff --git a/core/res/res/values/symbols.xml b/core/res/res/values/symbols.xml
+index a7272ec70ce1fcf9d912745f8debf1042515ddc7..dd46aebb4c84e922879343ad6bc592fc5581f330 100644
+--- a/core/res/res/values/symbols.xml
++++ b/core/res/res/values/symbols.xml
+@@ -4620,6 +4620,11 @@
+   <java-symbol type="string" name="bluetooth_airplane_mode_toast" />
+ 
+   <!-- For high refresh rate displays -->
++  <java-symbol type="integer" name="config_axDynamicMaxRefreshRate" />
++  <java-symbol type="integer" name="config_axDynamicLowRefreshRate" />
++  <java-symbol type="integer" name="config_axInteractiveRefreshRate" />
++  <java-symbol type="array" name="config_axDynamicFullRangePackages" />
++  <java-symbol type="array" name="config_axDynamicLowRefreshPackages" />
+   <java-symbol type="integer" name="config_defaultRefreshRate" />
+   <java-symbol type="integer" name="config_defaultPeakRefreshRate" />
+   <java-symbol type="integer" name="config_externalDisplayPeakRefreshRate" />
+diff --git a/services/core/java/com/android/server/display/mode/DisplayModeDirector.java b/services/core/java/com/android/server/display/mode/DisplayModeDirector.java
+index b14448356585a66a4ae061981a10bdeec9de7a4c..91d99456e36e08db0b0ff8a6058b436ff7680881 100644
+--- a/services/core/java/com/android/server/display/mode/DisplayModeDirector.java
++++ b/services/core/java/com/android/server/display/mode/DisplayModeDirector.java
+@@ -88,6 +88,7 @@ import com.android.server.display.utils.DeviceConfigParsingUtils;
+ import com.android.server.display.utils.SensorUtils;
+ import com.android.server.sensors.SensorManagerInternal;
+ import com.android.server.statusbar.StatusBarManagerInternal;
++import com.android.server.wm.AxRefreshRateController;
+ 
+ import java.io.PrintWriter;
+ import java.text.SimpleDateFormat;
+@@ -246,6 +247,13 @@ public class DisplayModeDirector {
+         mDisplayObserver.observe();
+ 
+         mSettingsObserver.observe();
++        AxRefreshRateController.getInstance().setRefreshRateUpdateCallback(
++                (min, peak, displayId) -> {
++                    synchronized (mLock) {
++                        mSettingsObserver.updateRefreshRateSettingFromControllerLocked(
++                                min, peak, displayId);
++                    }
++                });
+         mBrightnessObserver.observe(sensorManager);
+         mSensorObserver.observe();
+         mHbmObserver.observe();
+@@ -964,6 +972,9 @@ public class DisplayModeDirector {
+ 
+         private final Context mContext;
+         private final Handler mHandler;
++        @GuardedBy("mLock")
++        private final SparseArray<RefreshRateRange> mControllerRefreshRateRangesByDisplay =
++                new SparseArray<>();
+         private float mDefaultPeakRefreshRate;
+         private float mDefaultRefreshRate;
+         private boolean mIsLowPower = false;
+@@ -1158,31 +1169,44 @@ public class DisplayModeDirector {
+          */
+         @GuardedBy("mLock")
+         private void updateRefreshRateSettingLocked(int displayId) {
+-            final ContentResolver cr = mContext.getContentResolver();
+             if (!mSupportedModesByDisplay.contains(displayId)) {
+                 Slog.e(TAG, "Cannot update refresh rate setting: no supported modes for display "
+                         + displayId);
+                 return;
+             }
+-            float highestRefreshRate = getMaxRefreshRateLocked(displayId);
+-
++            final RefreshRateRange refreshRateRange =
++                    mControllerRefreshRateRangesByDisplay.get(displayId);
++            if (refreshRateRange != null) {
++                updateRefreshRateSettingLocked(refreshRateRange.min, refreshRateRange.max,
++                        mDefaultRefreshRate, displayId);
++                return;
++            }
++            // Keep the standard policy until the controller takes ownership of this display.
++            final ContentResolver cr = mContext.getContentResolver();
++            final float highestRefreshRate = getMaxRefreshRateLocked(displayId);
+             float minRefreshRate = Settings.System.getFloatForUser(cr,
+                     Settings.System.MIN_REFRESH_RATE, 0f, UserHandle.USER_CURRENT);
+             if (Float.isInfinite(minRefreshRate)) {
+-                // Infinity means that we want the highest possible refresh rate
+                 minRefreshRate = highestRefreshRate;
+             }
+-
+             float peakRefreshRate = Settings.System.getFloatForUser(cr,
+                     Settings.System.PEAK_REFRESH_RATE, mDefaultPeakRefreshRate,
+                     UserHandle.USER_CURRENT);
+             if (Float.isInfinite(peakRefreshRate)) {
+-                // Infinity means that we want the highest possible refresh rate
+                 peakRefreshRate = highestRefreshRate;
+             }
++            updateRefreshRateSettingLocked(minRefreshRate, peakRefreshRate,
++                    mDefaultRefreshRate, displayId);
++        }
+ 
+-            updateRefreshRateSettingLocked(minRefreshRate, peakRefreshRate, mDefaultRefreshRate,
+-                    displayId);
++        @GuardedBy("mLock")
++        private void updateRefreshRateSettingFromControllerLocked(float minRefreshRate,
++                float peakRefreshRate, int displayId) {
++            mControllerRefreshRateRangesByDisplay.put(displayId,
++                    new RefreshRateRange(minRefreshRate, peakRefreshRate));
++            if (mSupportedModesByDisplay.contains(displayId)) {
++                updateRefreshRateSettingLocked(displayId);
++            }
+         }
+ 
+         @GuardedBy("mLock")
+@@ -1243,7 +1267,9 @@ public class DisplayModeDirector {
+             }
+         }
+ 
++        @GuardedBy("mLock")
+         private void removeRefreshRateSetting(int displayId) {
++            mControllerRefreshRateRangesByDisplay.remove(displayId);
+             mVotesStorage.updateVote(displayId, Vote.PRIORITY_USER_SETTING_PEAK_REFRESH_RATE,
+                     null);
+             mVotesStorage.updateVote(displayId, Vote.PRIORITY_USER_SETTING_PEAK_RENDER_FRAME_RATE,
+@@ -1366,6 +1392,9 @@ public class DisplayModeDirector {
+         private Display.Mode findDefaultModeByRefreshRateLocked(int displayId, float refreshRate) {
+             Display.Mode[] modes = mAppSupportedModesByDisplay.get(displayId);
+             Display.Mode defaultMode = mDefaultModeByDisplay.get(displayId);
++            if (modes == null || defaultMode == null) {
++                return null;
++            }
+             for (int i = 0; i < modes.length; i++) {
+                 if (modes[i].matches(defaultMode.getPhysicalWidth(),
+                         defaultMode.getPhysicalHeight(), refreshRate)) {
+@@ -1718,6 +1747,9 @@ public class DisplayModeDirector {
+                     mSettingsObserver.updateRefreshRateSettingLocked(displayId);
+                 }
+             }
++            if (changed && displayId == Display.DEFAULT_DISPLAY) {
++                AxRefreshRateController.getInstance().forceResync();
++            }
+         }
+ 
+         private void updateHasArrSupport(int displayId, @Nullable DisplayInfo info) {
+diff --git a/services/core/java/com/android/server/wm/AxRefreshRateController.java b/services/core/java/com/android/server/wm/AxRefreshRateController.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..a9848459218967f2f1329d0c61825a38972970ce
+--- /dev/null
++++ b/services/core/java/com/android/server/wm/AxRefreshRateController.java
+@@ -0,0 +1,1348 @@
++/*
++ * Copyright (C) 2025-2026 AxionOS
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package com.android.server.wm;
++
++import android.content.Context;
++import android.content.pm.ApplicationInfo;
++import android.content.res.Resources;
++import android.database.ContentObserver;
++import android.hardware.display.DisplayManager;
++import android.net.Uri;
++import android.os.Handler;
++import android.os.Looper;
++import android.os.Message;
++import android.os.SystemClock;
++import android.os.SystemProperties;
++import android.os.UserHandle;
++import android.provider.Settings;
++import android.util.ArrayMap;
++import android.util.ArraySet;
++import android.util.Slog;
++import android.util.SparseArray;
++import android.view.Display;
++import android.view.DisplayInfo;
++import android.view.MotionEvent;
++
++import com.android.internal.R;
++import com.android.internal.annotations.GuardedBy;
++import com.android.server.DisplayThread;
++
++import java.util.ArrayList;
++import java.util.Collections;
++import java.util.List;
++import java.util.concurrent.atomic.AtomicInteger;
++
++public class AxRefreshRateController {
++
++    public interface RefreshRateUpdateCallback {
++        void onRefreshRateChanged(float min, float peak, int displayId);
++    }
++
++    private enum RefreshRateMode {
++        DYNAMIC,
++        MINIMUM,
++        MAXIMUM,
++        FIXED
++    }
++
++    private enum Boost {
++        TOUCH(1),
++        FOCUS(1 << 1),
++        FLING(1 << 2),
++        ANIMATION(1 << 3);
++
++        final int mask;
++
++        Boost(int mask) {
++            this.mask = mask;
++        }
++    }
++
++    private enum Policy {
++        KEYGUARD,
++        APP,
++        INTERACTIVE,
++        MINIMUM,
++        MAXIMUM,
++        FIXED,
++        DYNAMIC_FULL_RANGE,
++        DYNAMIC_CONTENT
++    }
++
++    private static final class ManagedDisplay {
++        String focusedPackage = "";
++        float appOverrideRate;
++        boolean usesFullDynamicRange;
++        boolean visible = true;
++        float lastSyncedPeak = -1f;
++        float lastSyncedMin = -1f;
++    }
++
++    private static final String TAG = "AxRefreshRateController";
++
++    private static final String SETTINGS_REFRESH_RATE_MODE = "display_refresh_rate_mode";
++    private static final String LOCKSCREEN_LIMIT_REFRESH_RATE = "lockscreen_limit_refresh_rate";
++    private static final String PER_APP_REFRESH_RATE = "per_app_refresh_rate";
++
++    private static final long DISPLAY_CHANGE_REQUERY_DELAY_MS = 500;
++    private static final float RATE_EQUALITY_TOLERANCE_HZ = 0.01f;
++    private static final float RATE_MATCH_TOLERANCE_HZ = 1.0f;
++    private static final float KEYGUARD_REFRESH_RATE_HZ = 60f;
++    private static final int DEFAULT_DYNAMIC_MAX_REFRESH_RATE_HZ = 120;
++    private static final int DEFAULT_DYNAMIC_LOW_REFRESH_RATE_HZ = 90;
++    private static final int DEFAULT_INTERACTIVE_REFRESH_RATE_HZ = 120;
++
++    private static final AxRefreshRateController sInstance = new AxRefreshRateController();
++
++    private static final boolean sSupportsVrr = SystemProperties.getBoolean(
++            "ro.surface_flinger.use_content_detection_for_refresh_rate", false);
++    private static final boolean sNeedsHfrFlickerFix = SystemProperties.getBoolean(
++            "persist.sys.vrr_needs_hfr_flicker_fix", false);
++
++    private Context mContext;
++    private Handler mHandler;
++    private WindowManagerService mWmService;
++
++    private volatile RefreshRateUpdateCallback mRateCallback;
++    private volatile boolean mInitialized;
++
++    private volatile float mMaxSupportedHz = 60f;
++    private volatile float mDefaultMinHz = 60f;
++    private volatile float mGlobalMaxHz = 60f;
++    private volatile float mDynamicLowMaxHz = 60f;
++    private volatile float mInteractiveRefreshRateHz = 60f;
++    private volatile float mKeyguardRefreshRateHz = KEYGUARD_REFRESH_RATE_HZ;
++    private volatile float[] mSupportedRefreshRates = {KEYGUARD_REFRESH_RATE_HZ};
++
++    private float[] mConfiguredRefreshRates = new float[0];
++    private int mConfiguredDynamicMaxRefreshRateHz = DEFAULT_DYNAMIC_MAX_REFRESH_RATE_HZ;
++    private int mConfiguredDynamicLowRefreshRateHz = DEFAULT_DYNAMIC_LOW_REFRESH_RATE_HZ;
++    private int mConfiguredInteractiveRefreshRateHz = DEFAULT_INTERACTIVE_REFRESH_RATE_HZ;
++
++    private volatile RefreshRateMode mRefreshRateMode = RefreshRateMode.MAXIMUM;
++    private volatile int mRefreshRateSetting = 60;
++    private volatile boolean mLockscreenLimitEnabled;
++    private volatile boolean mKeyguardDone = true;
++    private volatile boolean mNotificationShadeExpanded;
++
++    private final AtomicInteger mActiveBoosts = new AtomicInteger();
++    private long mIdleTimeoutMs;
++    private long mFocusBoostTimeoutMs;
++    private volatile long mLastActivityTime;
++
++    @GuardedBy("mWmService.mGlobalLock")
++    private boolean mCurrentVoteActive;
++    @GuardedBy("mWmService.mGlobalLock")
++    private float mCurrentVoteMin;
++    @GuardedBy("mWmService.mGlobalLock")
++    private float mCurrentVoteMax;
++
++    private final Object mDisplayLock = new Object();
++    @GuardedBy("mDisplayLock")
++    private final SparseArray<ManagedDisplay> mManagedDisplays = new SparseArray<>();
++    @GuardedBy("mDisplayLock")
++    private int mActiveDisplayId = Display.DEFAULT_DISPLAY;
++    @GuardedBy("mDisplayLock")
++    private long mActiveDisplaySelectionUptimeNanos;
++
++    @GuardedBy("mUserAppRefreshRates")
++    private final ArrayMap<String, Float> mUserAppRefreshRates = new ArrayMap<>();
++
++    private final ArraySet<String> mDynamicFullRangePackages = new ArraySet<>();
++    private final ArraySet<String> mDynamicLowRefreshPackages = new ArraySet<>();
++
++    private final Runnable mSyncAndTraversalRunnable = this::syncAndRequestTraversal;
++    private final Runnable mIdleTimeoutRunnable = this::syncAndRequestTraversal;
++    private final Runnable mForceSyncRunnable = () -> {
++        invalidateLastSync();
++        syncAndRequestTraversal();
++    };
++    private final Runnable mDisplayChangeRequeryRunnable = () -> {
++        queryAndApplyDisplayModes();
++        applyRefreshRateMode(mRefreshRateSetting);
++        refreshFocusedAppOverrides();
++        invalidateLastSync();
++        syncAndRequestTraversal();
++    };
++    private final Runnable mFlingBoostTimeoutRunnable = () -> {
++        if (clearBoost(Boost.FLING)) {
++            syncAndRequestTraversal();
++        }
++    };
++    private final Runnable mAnimationBoostTimeoutRunnable = () -> {
++        if (clearBoost(Boost.ANIMATION)) {
++            syncAndRequestTraversal();
++        }
++    };
++
++    private AxRefreshRateController() {}
++
++    public static AxRefreshRateController getInstance() {
++        return sInstance;
++    }
++
++    public synchronized void init(Context context, WindowManagerService wms) {
++        if (mInitialized) {
++            return;
++        }
++        mContext = context;
++        mWmService = wms;
++        mHandler = DisplayThread.getHandler();
++        mIdleTimeoutMs = SystemProperties.getLong("persist.sys.ax.idle_timeout_ms", 5000);
++        mFocusBoostTimeoutMs = SystemProperties.getLong(
++                "persist.sys.ax.focus_boost_timeout_ms", 5000);
++
++        loadDynamicRefreshRateConfig();
++        parseCustomRefreshRateList();
++        queryAndApplyDisplayModes();
++        loadRefreshRateSetting();
++        loadPerAppRefreshRates();
++        synchronized (mDisplayLock) {
++            mManagedDisplays.put(Display.DEFAULT_DISPLAY, new ManagedDisplay());
++        }
++
++        mInitialized = true;
++        new SettingsObserver();
++        forceResync();
++        mHandler.postDelayed(mDisplayChangeRequeryRunnable, DISPLAY_CHANGE_REQUERY_DELAY_MS);
++    }
++
++    public void setRefreshRateUpdateCallback(RefreshRateUpdateCallback callback) {
++        mRateCallback = callback;
++        forceResync();
++    }
++
++    public void onPointerEvent(int displayId, int action) {
++        if (!mInitialized) {
++            return;
++        }
++        final long eventTimeNanos = SystemClock.uptimeNanos();
++        final boolean activeDisplayChanged;
++        final boolean appOverrideActive;
++        synchronized (mDisplayLock) {
++            final ManagedDisplay display = mManagedDisplays.get(displayId);
++            if (display == null || !display.visible) {
++                return;
++            }
++            if (eventTimeNanos < mActiveDisplaySelectionUptimeNanos
++                    && mActiveDisplayId != displayId) {
++                return;
++            }
++            activeDisplayChanged = setActiveDisplayLocked(displayId, eventTimeNanos);
++            appOverrideActive = display.appOverrideRate > 0f;
++        }
++        if (action == MotionEvent.ACTION_CANCEL) {
++            if (clearInteractionBoosts() || activeDisplayChanged) {
++                postSyncAtFront();
++            }
++            return;
++        }
++        if (!isDynamicMode() || (mLockscreenLimitEnabled && !mKeyguardDone)) {
++            if (activeDisplayChanged) {
++                postSyncAtFront();
++            }
++            return;
++        }
++        // A per-app rate should continue to win for app gestures, but SystemUI is an
++        // overlay and does not become the focused app while the shade is open. Let
++        // shade gestures create an interactive vote so QS remains smooth even over
++        // an app that is explicitly limited to a lower refresh rate.
++        if (appOverrideActive && !mNotificationShadeExpanded) {
++            if (activeDisplayChanged) {
++                postSyncAtFront();
++            }
++            return;
++        }
++        clearBoost(Boost.FOCUS);
++        final boolean touchBoostAdded = setBoost(Boost.TOUCH);
++        if (touchBoostAdded || activeDisplayChanged
++                || action == MotionEvent.ACTION_DOWN
++                || action == MotionEvent.ACTION_MOVE
++                || action == MotionEvent.ACTION_UP) {
++            postSyncAtFront();
++        }
++    }
++
++    public void setFlingBoost(int displayId, long durationMillis) {
++        if (!mInitialized || !isDynamicMode()) {
++            return;
++        }
++        postTimedBoostAtFront(
++                Boost.FLING, displayId, SystemClock.uptimeNanos(), durationMillis);
++    }
++
++    public void setAnimationBoost(long durationMillis) {
++        if (!mInitialized || !isDynamicMode()) {
++            return;
++        }
++        postTimedBoostAtFront(
++                Boost.ANIMATION, Display.INVALID_DISPLAY, 0L, durationMillis);
++    }
++
++    public void clearAnimationBoost() {
++        if (!mInitialized || !isDynamicMode()) {
++            return;
++        }
++        mHandler.post(() -> {
++            mHandler.removeCallbacks(mAnimationBoostTimeoutRunnable);
++            if (clearBoost(Boost.ANIMATION)) {
++                syncAndRequestTraversal();
++            }
++        });
++    }
++
++    public void setNotificationShadeExpanded(boolean expanded) {
++        if (mNotificationShadeExpanded == expanded) {
++            return;
++        }
++        mNotificationShadeExpanded = expanded;
++        if (mInitialized) {
++            postSyncAtFront();
++        }
++    }
++
++    public void setKeyguardDone(boolean done) {
++        if (mKeyguardDone == done) {
++            return;
++        }
++        mKeyguardDone = done;
++        if (!mInitialized) {
++            return;
++        }
++        if (!done) {
++            clearAllBoosts();
++            setActiveDisplay(Display.DEFAULT_DISPLAY, SystemClock.uptimeNanos());
++        } else {
++            boostActiveDisplayIfNeeded();
++        }
++        postSyncAtFront();
++    }
++
++    public void onUserSwitched() {
++        if (!mInitialized) {
++            return;
++        }
++        mHandler.post(() -> {
++            loadRefreshRateSetting();
++            loadPerAppRefreshRates();
++            refreshFocusedAppOverrides();
++            boostActiveDisplayIfNeeded();
++            invalidateLastSync();
++            syncAndRequestTraversal();
++        });
++    }
++
++    public void onDisplayAdded(int displayId) {
++        if (!mInitialized || displayId == Display.DEFAULT_DISPLAY) {
++            return;
++        }
++        mHandler.post(() -> {
++            if (!mWmService.mDisplayManagerInternal.isFreeformDisplayId(displayId)) {
++                return;
++            }
++            synchronized (mDisplayLock) {
++                if (mManagedDisplays.contains(displayId)) {
++                    return;
++                }
++            }
++            final String focusedPackage;
++            final boolean visible;
++            synchronized (mWmService.mGlobalLock) {
++                final DisplayContent displayContent = mWmService.mRoot.getDisplayContent(displayId);
++                if (displayContent == null) {
++                    return;
++                }
++                final ActivityRecord focusedApp = displayContent.mFocusedApp;
++                focusedPackage = focusedApp == null || focusedApp.packageName == null
++                        ? "" : displayContent.mFocusedApp.packageName;
++                visible = !Display.isOffState(displayContent.getDisplayInfo().state);
++                synchronized (mDisplayLock) {
++                    if (mManagedDisplays.contains(displayId)) {
++                        return;
++                    }
++                    final ManagedDisplay display = new ManagedDisplay();
++                    display.focusedPackage = focusedPackage;
++                    display.usesFullDynamicRange = usesFullDynamicRange(focusedApp);
++                    display.visible = visible;
++                    updateFocusedAppOverrideLocked(display);
++                    mManagedDisplays.put(displayId, display);
++                    if (visible && !focusedPackage.isEmpty()) {
++                        setActiveDisplayLocked(displayId, SystemClock.uptimeNanos());
++                    }
++                    if (isDynamicMode() && mKeyguardDone
++                            && mActiveDisplayId == displayId && display.appOverrideRate <= 0f) {
++                        setBoost(Boost.FOCUS);
++                    }
++                }
++            }
++            syncAndRequestTraversal();
++        });
++    }
++
++    public void onDisplayRemoved(int displayId) {
++        if (!mInitialized || displayId == Display.DEFAULT_DISPLAY) {
++            return;
++        }
++        final boolean activeDisplayChanged;
++        synchronized (mDisplayLock) {
++            mManagedDisplays.remove(displayId);
++            activeDisplayChanged = mActiveDisplayId == displayId;
++            if (activeDisplayChanged) {
++                mActiveDisplayId = Display.DEFAULT_DISPLAY;
++                mActiveDisplaySelectionUptimeNanos = SystemClock.uptimeNanos();
++            }
++        }
++        if (activeDisplayChanged) {
++            clearInteractionBoosts();
++            mHandler.post(mSyncAndTraversalRunnable);
++        }
++    }
++
++    public void onFreeformDisplayVisibilityChanged(int displayId, boolean visible) {
++        if (!mInitialized) {
++            return;
++        }
++        final boolean activeDisplayChanged;
++        synchronized (mDisplayLock) {
++            final ManagedDisplay display = mManagedDisplays.get(displayId);
++            if (display == null) {
++                return;
++            }
++            display.visible = visible;
++            if (visible) {
++                activeDisplayChanged = setActiveDisplayLocked(
++                        displayId, SystemClock.uptimeNanos());
++            } else if (mActiveDisplayId == displayId) {
++                activeDisplayChanged = setActiveDisplayLocked(
++                        Display.DEFAULT_DISPLAY, SystemClock.uptimeNanos());
++            } else {
++                return;
++            }
++        }
++        if (activeDisplayChanged) {
++            if (!visible) {
++                clearInteractionBoosts();
++            }
++            postSyncAtFront();
++        }
++    }
++
++    public void onAllFreeformDisplaysHidden() {
++        if (!mInitialized) {
++            return;
++        }
++        final boolean activeDisplayChanged;
++        synchronized (mDisplayLock) {
++            for (int i = 0; i < mManagedDisplays.size(); i++) {
++                if (mManagedDisplays.keyAt(i) != Display.DEFAULT_DISPLAY) {
++                    mManagedDisplays.valueAt(i).visible = false;
++                }
++            }
++            activeDisplayChanged = setActiveDisplayLocked(
++                    Display.DEFAULT_DISPLAY, SystemClock.uptimeNanos());
++        }
++        if (activeDisplayChanged) {
++            clearInteractionBoosts();
++            postSyncAtFront();
++        }
++    }
++
++    public void updateFocusedApp(int displayId, ActivityRecord activityRecord) {
++        if (!mInitialized) {
++            return;
++        }
++        final String packageName = activityRecord == null || activityRecord.packageName == null
++                ? "" : activityRecord.packageName;
++        final long focusChangeTimeNanos = SystemClock.uptimeNanos();
++        synchronized (mDisplayLock) {
++            final ManagedDisplay display = mManagedDisplays.get(displayId);
++            if (display == null) {
++                return;
++            }
++            if (!packageName.isEmpty() && display.visible) {
++                setActiveDisplayLocked(displayId, focusChangeTimeNanos);
++            }
++            display.focusedPackage = packageName;
++            display.usesFullDynamicRange = usesFullDynamicRange(activityRecord);
++            updateFocusedAppOverrideLocked(display);
++            if (isDynamicMode() && !packageName.isEmpty() && mActiveDisplayId == displayId
++                    && display.appOverrideRate <= 0f && mKeyguardDone) {
++                setBoost(Boost.FOCUS);
++            }
++        }
++        postSyncAtFront();
++    }
++
++    private boolean usesFullDynamicRange(ActivityRecord activityRecord) {
++        if (activityRecord == null) {
++            return false;
++        }
++        final String packageName = activityRecord.packageName;
++        if (packageName != null && mDynamicLowRefreshPackages.contains(packageName)) {
++            return false;
++        }
++        if (activityRecord.isActivityTypeHome()) {
++            return true;
++        }
++        if (packageName != null && mDynamicFullRangePackages.contains(packageName)) {
++            return true;
++        }
++        if (activityRecord.info == null || activityRecord.info.applicationInfo == null) {
++            return false;
++        }
++        final ApplicationInfo appInfo = activityRecord.info.applicationInfo;
++        return appInfo.category == ApplicationInfo.CATEGORY_GAME
++                || (appInfo.flags & ApplicationInfo.FLAG_IS_GAME) != 0;
++    }
++
++    public void onDisplayChanged(int displayId) {
++        if (!mInitialized || !isDisplayManaged(displayId)) {
++            return;
++        }
++        if (displayId != Display.DEFAULT_DISPLAY) {
++            return;
++        }
++        mHandler.post(() -> {
++            queryAndApplyDisplayModes();
++            applyRefreshRateMode(mRefreshRateSetting);
++            refreshFocusedAppOverrides();
++            invalidateLastSync();
++            mHandler.removeCallbacks(mDisplayChangeRequeryRunnable);
++            syncDisplaySettings();
++            mHandler.postDelayed(mDisplayChangeRequeryRunnable,
++                    DISPLAY_CHANGE_REQUERY_DELAY_MS);
++        });
++    }
++
++    public void forceResync() {
++        if (mInitialized) {
++            mHandler.post(mForceSyncRunnable);
++        }
++    }
++
++    @GuardedBy("mWmService.mGlobalLock")
++    public void updateVoteResult(int displayId) {
++        clearCurrentVote();
++        if (!mInitialized || !isDisplayManaged(displayId)) {
++            return;
++        }
++        final boolean boosted = isDynamicMode() && hasEffectiveBoost();
++        synchronized (mDisplayLock) {
++            final int policyDisplayId = getPolicyDisplayIdLocked(displayId);
++            final ManagedDisplay policyDisplay = mManagedDisplays.get(policyDisplayId);
++            if (policyDisplay == null) {
++                return;
++            }
++            final Policy policy = resolvePolicyLocked(displayId, policyDisplay,
++                    boosted && policyDisplayId == mActiveDisplayId);
++            switch (policy) {
++                case DYNAMIC_CONTENT:
++                case DYNAMIC_FULL_RANGE:
++                    return;
++                case KEYGUARD:
++                case APP:
++                case INTERACTIVE:
++                case MINIMUM:
++                case MAXIMUM:
++                case FIXED:
++                    final float rate = resolvePolicyRateLocked(policy, policyDisplay);
++                    setCurrentVote(rate, rate);
++                    return;
++                default:
++                    throw new IllegalStateException("Unknown refresh rate policy " + policy);
++            }
++        }
++    }
++
++    private boolean isDisplayManaged(int displayId) {
++        if (!mInitialized) {
++            return false;
++        }
++        synchronized (mDisplayLock) {
++            return mManagedDisplays.contains(displayId);
++        }
++    }
++
++    @GuardedBy("mWmService.mGlobalLock")
++    public boolean hasActiveVote() {
++        return mCurrentVoteActive;
++    }
++
++    @GuardedBy("mWmService.mGlobalLock")
++    public float getMaxPreferredRate() {
++        return mCurrentVoteMax;
++    }
++
++    @GuardedBy("mWmService.mGlobalLock")
++    public float getMinPreferredRate() {
++        return mCurrentVoteMin;
++    }
++
++    private void postTimedBoostAtFront(Boost boost, int displayId, long selectionTimeNanos,
++            long durationMillis) {
++        if (Looper.myLooper() == mHandler.getLooper()) {
++            setTimedBoost(boost, displayId, selectionTimeNanos, durationMillis);
++            return;
++        }
++        final Message message = Message.obtain(mHandler,
++                () -> setTimedBoost(boost, displayId, selectionTimeNanos, durationMillis));
++        message.setAsynchronous(true);
++        mHandler.sendMessageAtFrontOfQueue(message);
++    }
++
++    private void postSyncAtFront() {
++        if (Looper.myLooper() == mHandler.getLooper()) {
++            syncAndRequestTraversal();
++            return;
++        }
++        final Message message = Message.obtain(mHandler, mSyncAndTraversalRunnable);
++        message.setAsynchronous(true);
++        mHandler.sendMessageAtFrontOfQueue(message);
++    }
++
++    private void setTimedBoost(Boost boost, int displayId, long selectionTimeNanos,
++            long durationMillis) {
++        if (!isDynamicMode()) {
++            return;
++        }
++        final int targetDisplayId;
++        boolean interactionBoostsCleared = false;
++        final Runnable timeoutRunnable;
++        switch (boost) {
++            case FLING:
++                if (!setActiveDisplay(displayId, selectionTimeNanos)) {
++                    return;
++                }
++                targetDisplayId = displayId;
++                timeoutRunnable = mFlingBoostTimeoutRunnable;
++                interactionBoostsCleared = clearInteractionBoosts();
++                break;
++            case ANIMATION:
++                synchronized (mDisplayLock) {
++                    targetDisplayId = mActiveDisplayId;
++                }
++                timeoutRunnable = mAnimationBoostTimeoutRunnable;
++                break;
++            case TOUCH:
++            case FOCUS:
++            default:
++                throw new IllegalArgumentException("Timed boost is not supported for " + boost);
++        }
++        mHandler.removeCallbacks(timeoutRunnable);
++        if ((mLockscreenLimitEnabled && !mKeyguardDone) || durationMillis <= 0) {
++            if (clearBoost(boost) || interactionBoostsCleared) {
++                syncAndRequestTraversal();
++            }
++            return;
++        }
++
++        if (hasAppOverride(targetDisplayId)) {
++            clearBoost(boost);
++            syncAndRequestTraversal();
++            return;
++        }
++        setBoost(boost);
++        syncAndRequestTraversal();
++        mHandler.postDelayed(timeoutRunnable, durationMillis);
++    }
++
++    private void boostActiveDisplayIfNeeded() {
++        if (!isDynamicMode() || !mKeyguardDone) {
++            return;
++        }
++        synchronized (mDisplayLock) {
++            final ManagedDisplay display = mManagedDisplays.get(mActiveDisplayId);
++            if (display == null || display.appOverrideRate > 0f) {
++                return;
++            }
++            setBoost(Boost.FOCUS);
++        }
++    }
++
++    private boolean setBoost(Boost boost) {
++        switch (boost) {
++            case TOUCH:
++            case FOCUS:
++                mLastActivityTime = SystemClock.uptimeMillis();
++                break;
++            case FLING:
++            case ANIMATION:
++                break;
++            default:
++                throw new IllegalStateException("Unknown refresh rate boost " + boost);
++        }
++        int activeBoosts;
++        do {
++            activeBoosts = mActiveBoosts.get();
++            if ((activeBoosts & boost.mask) != 0) {
++                return false;
++            }
++        } while (!mActiveBoosts.compareAndSet(activeBoosts, activeBoosts | boost.mask));
++        return true;
++    }
++
++    private boolean clearBoost(Boost boost) {
++        int activeBoosts;
++        int newBoosts;
++        do {
++            activeBoosts = mActiveBoosts.get();
++            if ((activeBoosts & boost.mask) == 0) {
++                return false;
++            }
++            newBoosts = activeBoosts & ~boost.mask;
++        } while (!mActiveBoosts.compareAndSet(activeBoosts, newBoosts));
++        return true;
++    }
++
++    private boolean clearInteractionBoosts() {
++        final boolean touchCleared = clearBoost(Boost.TOUCH);
++        return clearBoost(Boost.FOCUS) || touchCleared;
++    }
++
++    private void clearAllBoosts() {
++        if (mHandler != null) {
++            mHandler.removeCallbacks(mFlingBoostTimeoutRunnable);
++            mHandler.removeCallbacks(mAnimationBoostTimeoutRunnable);
++            mHandler.removeCallbacks(mSyncAndTraversalRunnable);
++            mHandler.removeCallbacks(mIdleTimeoutRunnable);
++        }
++        mActiveBoosts.set(0);
++    }
++
++    private boolean hasBoost(Boost boost) {
++        return (mActiveBoosts.get() & boost.mask) != 0;
++    }
++
++    private boolean hasEffectiveBoost() {
++        while (true) {
++            final int activeBoosts = mActiveBoosts.get();
++            if (activeBoosts == 0) {
++                return false;
++            }
++            if ((activeBoosts & (Boost.FLING.mask | Boost.ANIMATION.mask)) != 0) {
++                return true;
++            }
++            final long timeout = (activeBoosts & Boost.FOCUS.mask) != 0
++                    ? mFocusBoostTimeoutMs : mIdleTimeoutMs;
++            if (SystemClock.uptimeMillis() - mLastActivityTime < timeout) {
++                return true;
++            }
++            final int remainingBoosts = activeBoosts
++                    & ~(Boost.TOUCH.mask | Boost.FOCUS.mask);
++            if (mActiveBoosts.compareAndSet(activeBoosts, remainingBoosts)) {
++                return remainingBoosts != 0;
++            }
++        }
++    }
++
++    private float resolveUserRefreshRate(Float rate) {
++        if (rate == null || !Float.isFinite(rate) || rate <= 0f) {
++            return 0f;
++        }
++        return findSupportedRefreshRate(rate, RATE_MATCH_TOLERANCE_HZ);
++    }
++
++    private void invalidateLastSync() {
++        synchronized (mDisplayLock) {
++            for (int i = 0; i < mManagedDisplays.size(); i++) {
++                invalidateLastSyncLocked(mManagedDisplays.valueAt(i));
++            }
++        }
++    }
++
++    @GuardedBy("mDisplayLock")
++    private void invalidateLastSyncLocked(ManagedDisplay display) {
++        display.lastSyncedPeak = -1f;
++        display.lastSyncedMin = -1f;
++    }
++
++    @GuardedBy("mWmService.mGlobalLock")
++    private void setCurrentVote(float min, float max) {
++        mCurrentVoteActive = true;
++        mCurrentVoteMin = min;
++        mCurrentVoteMax = max;
++    }
++
++    @GuardedBy("mWmService.mGlobalLock")
++    private void clearCurrentVote() {
++        mCurrentVoteActive = false;
++        mCurrentVoteMin = 0f;
++        mCurrentVoteMax = 0f;
++    }
++
++    private void loadDynamicRefreshRateConfig() {
++        final Resources res = mContext.getResources();
++        mConfiguredDynamicMaxRefreshRateHz = getPositiveIntegerConfig(res,
++                R.integer.config_axDynamicMaxRefreshRate, DEFAULT_DYNAMIC_MAX_REFRESH_RATE_HZ);
++        mConfiguredDynamicLowRefreshRateHz = getPositiveIntegerConfig(res,
++                R.integer.config_axDynamicLowRefreshRate, DEFAULT_DYNAMIC_LOW_REFRESH_RATE_HZ);
++        mConfiguredInteractiveRefreshRateHz = getPositiveIntegerConfig(res,
++                R.integer.config_axInteractiveRefreshRate, DEFAULT_INTERACTIVE_REFRESH_RATE_HZ);
++
++        mDynamicFullRangePackages.clear();
++        addPackages(mDynamicFullRangePackages,
++                res.getStringArray(R.array.config_axDynamicFullRangePackages));
++        mDynamicLowRefreshPackages.clear();
++        addPackages(mDynamicLowRefreshPackages,
++                res.getStringArray(R.array.config_axDynamicLowRefreshPackages));
++    }
++
++    private static int getPositiveIntegerConfig(Resources res, int resId, int defaultValue) {
++        final int value = res.getInteger(resId);
++        return value > 0 ? value : defaultValue;
++    }
++
++    private static void addPackages(ArraySet<String> out, String[] packages) {
++        for (String packageName : packages) {
++            if (packageName == null) {
++                continue;
++            }
++            packageName = packageName.trim();
++            if (!packageName.isEmpty()) {
++                out.add(packageName);
++            }
++        }
++    }
++
++    private void parseCustomRefreshRateList() {
++        final String customList = SystemProperties.get(
++                "persist.sys.display_refresh_rates_list", "");
++        if (customList.isEmpty()) {
++            return;
++        }
++        final List<Float> parsedRates = new ArrayList<>();
++        for (String rateString : customList.split(",")) {
++            try {
++                final float rate = Float.parseFloat(rateString.trim());
++                if (!Float.isFinite(rate) || rate <= 0f) {
++                    continue;
++                }
++                addDistinctRate(parsedRates, rate);
++            } catch (NumberFormatException e) {
++                Slog.e(TAG, "Failed to parse refresh rate: " + rateString, e);
++            }
++        }
++        Collections.sort(parsedRates);
++        mConfiguredRefreshRates = toFloatArray(parsedRates);
++    }
++
++    private void queryAndApplyDisplayModes() {
++        final DisplayManager displayManager = mContext.getSystemService(DisplayManager.class);
++        if (displayManager == null) {
++            return;
++        }
++        final Display display = displayManager.getDisplay(Display.DEFAULT_DISPLAY);
++        if (display == null) {
++            return;
++        }
++
++        final DisplayInfo displayInfo = new DisplayInfo();
++        if (!display.getDisplayInfo(displayInfo)) {
++            return;
++        }
++        final Display.Mode currentMode = displayInfo.getMode();
++        if (currentMode == null) {
++            return;
++        }
++        final List<Float> availableRates = new ArrayList<>();
++        for (float rate : displayInfo.getDefaultRefreshRates()) {
++            if (Float.isFinite(rate) && rate > 0f) {
++                addDistinctRate(availableRates, rate);
++            }
++        }
++        for (Display.Mode mode : displayInfo.appsSupportedModes) {
++            if (mode.getPhysicalWidth() != currentMode.getPhysicalWidth()
++                    || mode.getPhysicalHeight() != currentMode.getPhysicalHeight()) {
++                continue;
++            }
++            final float rate = mode.getRefreshRate();
++            if (Float.isFinite(rate) && rate > 0f) {
++                addDistinctRate(availableRates, rate);
++            }
++        }
++        if (availableRates.isEmpty()) {
++            return;
++        }
++        Collections.sort(availableRates);
++
++        final float[] actualRates = toFloatArray(availableRates);
++        final List<Float> supportedRates = new ArrayList<>();
++        if (mConfiguredRefreshRates.length > 0) {
++            for (float configuredRate : mConfiguredRefreshRates) {
++                final float matchedRate = findClosestRefreshRate(
++                        actualRates, configuredRate, RATE_MATCH_TOLERANCE_HZ);
++                if (matchedRate > 0f) {
++                    addDistinctRate(supportedRates, matchedRate);
++                }
++            }
++        }
++        if (supportedRates.isEmpty()) {
++            supportedRates.addAll(availableRates);
++        } else {
++            Collections.sort(supportedRates);
++        }
++
++        final float[] rates = toFloatArray(supportedRates);
++        final float keyguardRefreshRate = findKeyguardRefreshRate(actualRates);
++        final float interactiveRefreshRate = findInteractiveRefreshRate(rates);
++        final float globalMaxRefreshRate = findGlobalMaxRefreshRate(rates, interactiveRefreshRate);
++        final float dynamicLowMaxRefreshRate = findDynamicLowMaxRefreshRate(
++                rates, globalMaxRefreshRate);
++        synchronized (mDisplayLock) {
++            mSupportedRefreshRates = rates;
++            mDefaultMinHz = rates[0];
++            mMaxSupportedHz = rates[rates.length - 1];
++            mGlobalMaxHz = globalMaxRefreshRate;
++            mDynamicLowMaxHz = dynamicLowMaxRefreshRate;
++            mInteractiveRefreshRateHz = Math.min(interactiveRefreshRate, globalMaxRefreshRate);
++            mKeyguardRefreshRateHz = keyguardRefreshRate;
++        }
++    }
++
++    @GuardedBy("mDisplayLock")
++    private Policy resolvePolicyLocked(int displayId, ManagedDisplay display, boolean boosted) {
++        if (!mKeyguardDone && mLockscreenLimitEnabled) {
++            return Policy.KEYGUARD;
++        }
++        if (!mKeyguardDone && sNeedsHfrFlickerFix && !(isDynamicMode() && boosted)) {
++            return Policy.KEYGUARD;
++        }
++        if (!mKeyguardDone) {
++            return resolveModePolicy(boosted);
++        }
++        if (displayId == Display.DEFAULT_DISPLAY && mNotificationShadeExpanded && boosted) {
++            return Policy.INTERACTIVE;
++        }
++        if (display.appOverrideRate > 0f) {
++            return Policy.APP;
++        }
++        if (isDynamicMode()) {
++            if (display.usesFullDynamicRange) {
++                return boosted ? Policy.INTERACTIVE : Policy.DYNAMIC_FULL_RANGE;
++            }
++            return Policy.DYNAMIC_CONTENT;
++        }
++        return resolveModePolicy(boosted);
++    }
++
++    private Policy resolveModePolicy(boolean boosted) {
++        switch (mRefreshRateMode) {
++            case DYNAMIC:
++                if (!boosted) {
++                    return Policy.DYNAMIC_CONTENT;
++                }
++                return Policy.INTERACTIVE;
++            case MINIMUM:
++                return Policy.MINIMUM;
++            case MAXIMUM:
++                return Policy.MAXIMUM;
++            case FIXED:
++                return Policy.FIXED;
++        }
++        throw new IllegalStateException("Unknown refresh rate mode " + mRefreshRateMode);
++    }
++
++    @GuardedBy("mDisplayLock")
++    private float resolvePolicyRateLocked(Policy policy, ManagedDisplay display) {
++        switch (policy) {
++            case KEYGUARD:
++                return mKeyguardRefreshRateHz;
++            case INTERACTIVE:
++                return mInteractiveRefreshRateHz;
++            case MAXIMUM:
++                return mMaxSupportedHz;
++            case APP:
++                return display.appOverrideRate;
++            case MINIMUM:
++                return mDefaultMinHz;
++            case FIXED:
++                return resolveSelectedRefreshRate();
++            case DYNAMIC_CONTENT:
++            case DYNAMIC_FULL_RANGE:
++                break;
++        }
++        throw new IllegalStateException("Policy does not lock a refresh rate: " + policy);
++    }
++
++    private void syncDisplaySettings() {
++        final boolean boosted = isDynamicMode() && hasEffectiveBoost();
++        final int[] displayIds;
++        synchronized (mDisplayLock) {
++            displayIds = new int[mManagedDisplays.size()];
++            for (int i = 0; i < displayIds.length; i++) {
++                displayIds[i] = mManagedDisplays.keyAt(i);
++            }
++        }
++
++        boolean boostAffectsVote = false;
++        for (int displayId : displayIds) {
++            boostAffectsVote |= syncDisplaySetting(displayId, boosted);
++        }
++        if (boostAffectsVote && !hasBoost(Boost.FLING) && !hasBoost(Boost.ANIMATION)) {
++            final long elapsed = SystemClock.uptimeMillis() - mLastActivityTime;
++            final long timeout = hasBoost(Boost.FOCUS)
++                    ? mFocusBoostTimeoutMs : mIdleTimeoutMs;
++            mHandler.removeCallbacks(mIdleTimeoutRunnable);
++            mHandler.postDelayed(mIdleTimeoutRunnable, Math.max(1, timeout - elapsed));
++        } else {
++            mHandler.removeCallbacks(mIdleTimeoutRunnable);
++        }
++    }
++
++    private boolean syncDisplaySetting(int displayId, boolean boosted) {
++        final RefreshRateUpdateCallback callback = mRateCallback;
++        final float min;
++        final float peak;
++        final Policy policy;
++        final boolean changed;
++        synchronized (mDisplayLock) {
++            final ManagedDisplay outputDisplay = mManagedDisplays.get(displayId);
++            final int policyDisplayId = getPolicyDisplayIdLocked(displayId);
++            final ManagedDisplay policyDisplay = mManagedDisplays.get(policyDisplayId);
++            if (outputDisplay == null || policyDisplay == null) {
++                return false;
++            }
++            policy = resolvePolicyLocked(displayId, policyDisplay,
++                    boosted && policyDisplayId == mActiveDisplayId);
++            if (policy == Policy.DYNAMIC_CONTENT || policy == Policy.DYNAMIC_FULL_RANGE) {
++                min = 0f;
++                peak = policy == Policy.DYNAMIC_FULL_RANGE
++                        ? mGlobalMaxHz : mDynamicLowMaxHz;
++            } else {
++                final float rate = resolvePolicyRateLocked(policy, policyDisplay);
++                min = rate;
++                peak = rate;
++            }
++            changed = peak != outputDisplay.lastSyncedPeak || min != outputDisplay.lastSyncedMin;
++            if (callback != null && changed) {
++                outputDisplay.lastSyncedPeak = peak;
++                outputDisplay.lastSyncedMin = min;
++            }
++        }
++        if (callback != null && changed) {
++            callback.onRefreshRateChanged(min, peak, displayId);
++        }
++        return usesTimedBoost(policy);
++    }
++
++    private static boolean usesTimedBoost(Policy policy) {
++        switch (policy) {
++            case INTERACTIVE:
++                return true;
++            case KEYGUARD:
++            case APP:
++            case MINIMUM:
++            case MAXIMUM:
++            case FIXED:
++            case DYNAMIC_CONTENT:
++            case DYNAMIC_FULL_RANGE:
++                return false;
++        }
++        throw new IllegalStateException("Unknown refresh rate policy " + policy);
++    }
++
++    private void syncAndRequestTraversal() {
++        if (!isDynamicMode() && mActiveBoosts.get() != 0) {
++            clearAllBoosts();
++        }
++        syncDisplaySettings();
++        requestTraversal();
++    }
++
++    private void loadRefreshRateSetting() {
++        final int value = Settings.Global.getInt(mContext.getContentResolver(),
++                SETTINGS_REFRESH_RATE_MODE, sSupportsVrr ? 0 : Math.round(mGlobalMaxHz));
++        applyRefreshRateMode(value);
++        mLockscreenLimitEnabled = Settings.System.getIntForUser(mContext.getContentResolver(),
++                LOCKSCREEN_LIMIT_REFRESH_RATE, 0, UserHandle.USER_CURRENT) != 0;
++        if (mLockscreenLimitEnabled && !mKeyguardDone) {
++            clearAllBoosts();
++        }
++    }
++
++    private void applyRefreshRateMode(int value) {
++        final RefreshRateMode oldMode = mRefreshRateMode;
++        mRefreshRateSetting = value;
++        if (value == 0 && sSupportsVrr) {
++            mRefreshRateMode = RefreshRateMode.DYNAMIC;
++        } else {
++            final float rate = resolveSelectedRefreshRate();
++            if (Math.abs(rate - mDefaultMinHz) <= RATE_EQUALITY_TOLERANCE_HZ) {
++                mRefreshRateMode = RefreshRateMode.MINIMUM;
++            } else if (Math.abs(rate - mMaxSupportedHz) <= RATE_EQUALITY_TOLERANCE_HZ) {
++                mRefreshRateMode = RefreshRateMode.MAXIMUM;
++            } else {
++                mRefreshRateMode = RefreshRateMode.FIXED;
++            }
++        }
++        if (oldMode == RefreshRateMode.DYNAMIC
++                && mRefreshRateMode != RefreshRateMode.DYNAMIC) {
++            clearAllBoosts();
++        }
++    }
++
++    private boolean isDynamicMode() {
++        return mRefreshRateMode == RefreshRateMode.DYNAMIC;
++    }
++
++    private float resolveSelectedRefreshRate() {
++        if (mRefreshRateSetting <= 0) {
++            return mGlobalMaxHz;
++        }
++        final float rate = findSupportedRefreshRate(
++                mRefreshRateSetting, RATE_MATCH_TOLERANCE_HZ);
++        return rate > 0f ? rate : mGlobalMaxHz;
++    }
++
++    private void loadPerAppRefreshRates() {
++        final String config = Settings.System.getStringForUser(mContext.getContentResolver(),
++                PER_APP_REFRESH_RATE, UserHandle.USER_CURRENT);
++        final ArrayMap<String, Float> parsed = new ArrayMap<>();
++        if (config != null && !config.isEmpty()) {
++            for (String app : config.split(",")) {
++                final String[] parts = app.split(":", 2);
++                if (parts.length != 2 || parts[0].isEmpty()) {
++                    continue;
++                }
++                try {
++                    final float rate = Float.parseFloat(parts[1]);
++                    if (Float.isFinite(rate) && rate > 0f) {
++                        parsed.put(parts[0], rate);
++                    }
++                } catch (NumberFormatException e) {
++                    Slog.e(TAG, "Failed to parse refresh rate for app: " + app, e);
++                }
++            }
++        }
++        synchronized (mUserAppRefreshRates) {
++            mUserAppRefreshRates.clear();
++            mUserAppRefreshRates.putAll(parsed);
++        }
++    }
++
++    private void refreshFocusedAppOverrides() {
++        synchronized (mDisplayLock) {
++            for (int i = 0; i < mManagedDisplays.size(); i++) {
++                updateFocusedAppOverrideLocked(mManagedDisplays.valueAt(i));
++            }
++        }
++    }
++
++    @GuardedBy("mDisplayLock")
++    private void updateFocusedAppOverrideLocked(ManagedDisplay display) {
++        if (display.focusedPackage.isEmpty()) {
++            display.appOverrideRate = 0f;
++            return;
++        }
++        final Float userRate;
++        synchronized (mUserAppRefreshRates) {
++            userRate = mUserAppRefreshRates.get(display.focusedPackage);
++        }
++        display.appOverrideRate = resolveUserRefreshRate(userRate);
++    }
++
++    private boolean hasAppOverride(int displayId) {
++        synchronized (mDisplayLock) {
++            final ManagedDisplay display = mManagedDisplays.get(displayId);
++            return display != null && display.appOverrideRate > 0f;
++        }
++    }
++
++    private boolean setActiveDisplay(int displayId, long selectionTimeNanos) {
++        synchronized (mDisplayLock) {
++            final ManagedDisplay display = mManagedDisplays.get(displayId);
++            if (display == null || !display.visible) {
++                return false;
++            }
++            if (selectionTimeNanos < mActiveDisplaySelectionUptimeNanos) {
++                return mActiveDisplayId == displayId;
++            }
++            setActiveDisplayLocked(displayId, selectionTimeNanos);
++            return true;
++        }
++    }
++
++    @GuardedBy("mDisplayLock")
++    private boolean setActiveDisplayLocked(int displayId, long selectionUptimeNanos) {
++        if (selectionUptimeNanos < mActiveDisplaySelectionUptimeNanos) {
++            return false;
++        }
++        mActiveDisplaySelectionUptimeNanos = selectionUptimeNanos;
++        if (mActiveDisplayId == displayId) {
++            return false;
++        }
++        mActiveDisplayId = displayId;
++        return true;
++    }
++
++    @GuardedBy("mDisplayLock")
++    private int getPolicyDisplayIdLocked(int displayId) {
++        if (displayId == Display.DEFAULT_DISPLAY && mKeyguardDone
++                && !(isDynamicMode() && mNotificationShadeExpanded)
++                && mActiveDisplayId != Display.DEFAULT_DISPLAY
++                && mManagedDisplays.contains(mActiveDisplayId)
++                && mManagedDisplays.get(mActiveDisplayId).visible) {
++            return mActiveDisplayId;
++        }
++        return displayId;
++    }
++
++    private float findSupportedRefreshRate(float requestedRate, float tolerance) {
++        return findClosestRefreshRate(mSupportedRefreshRates, requestedRate, tolerance);
++    }
++
++    private static float findClosestRefreshRate(float[] rates, float requestedRate,
++            float tolerance) {
++        float closestRate = 0f;
++        float closestDistance = Float.POSITIVE_INFINITY;
++        for (float rate : rates) {
++            final float distance = Math.abs(rate - requestedRate);
++            if (distance < closestDistance) {
++                closestRate = rate;
++                closestDistance = distance;
++            }
++        }
++        return closestDistance <= tolerance ? closestRate : 0f;
++    }
++
++    private float findGlobalMaxRefreshRate(float[] rates, float fallbackRate) {
++        final int configuredRate = SystemProperties.getInt(
++                "persist.sys.ax.global_max_refresh_rate",
++                mConfiguredDynamicMaxRefreshRateHz);
++        if (configuredRate <= 0) {
++            return rates[rates.length - 1];
++        }
++        float globalMaxRate = 0f;
++        for (float rate : rates) {
++            if (rate <= configuredRate + RATE_MATCH_TOLERANCE_HZ) {
++                globalMaxRate = rate;
++            }
++        }
++        if (globalMaxRate > 0f) {
++            return globalMaxRate;
++        }
++        return fallbackRate > 0f ? fallbackRate : rates[rates.length - 1];
++    }
++
++    private float findDynamicLowMaxRefreshRate(float[] rates, float globalMaxRate) {
++        final int configuredRate = SystemProperties.getInt(
++                "persist.sys.ax.dynamic_low_refresh_rate",
++                mConfiguredDynamicLowRefreshRateHz);
++        if (configuredRate <= 0) {
++            return globalMaxRate;
++        }
++        final float maxAllowedRate = Math.min(configuredRate, globalMaxRate);
++        float dynamicLowMaxRate = 0f;
++        for (float rate : rates) {
++            if (rate <= maxAllowedRate + RATE_MATCH_TOLERANCE_HZ) {
++                dynamicLowMaxRate = rate;
++            }
++        }
++        return dynamicLowMaxRate > 0f ? dynamicLowMaxRate : rates[0];
++    }
++
++    private float findInteractiveRefreshRate(float[] rates) {
++        final float configuredRate = SystemProperties.getInt(
++                "persist.sys.ax.interactive_refresh_rate",
++                mConfiguredInteractiveRefreshRateHz);
++        if (configuredRate > 0) {
++            final float matchedRate = findClosestRefreshRate(
++                    rates, configuredRate, RATE_MATCH_TOLERANCE_HZ);
++            if (matchedRate > 0f) {
++                return matchedRate;
++            }
++        }
++        float interactiveRate = 0f;
++        for (float rate : rates) {
++            if (rate <= mConfiguredInteractiveRefreshRateHz + RATE_MATCH_TOLERANCE_HZ) {
++                interactiveRate = rate;
++            }
++        }
++        return interactiveRate > 0f ? interactiveRate : rates[rates.length - 1];
++    }
++
++    private static float findKeyguardRefreshRate(float[] rates) {
++        final float matchedRate = findClosestRefreshRate(
++                rates, KEYGUARD_REFRESH_RATE_HZ, RATE_MATCH_TOLERANCE_HZ);
++        if (matchedRate > 0f) {
++            return matchedRate;
++        }
++        for (float rate : rates) {
++            if (rate >= KEYGUARD_REFRESH_RATE_HZ) {
++                return rate;
++            }
++        }
++        return rates[rates.length - 1];
++    }
++
++    private static void addDistinctRate(List<Float> rates, float rate) {
++        for (float existingRate : rates) {
++            if (Math.abs(existingRate - rate) <= RATE_EQUALITY_TOLERANCE_HZ) {
++                return;
++            }
++        }
++        rates.add(rate);
++    }
++
++    private static float[] toFloatArray(List<Float> rates) {
++        final float[] result = new float[rates.size()];
++        for (int i = 0; i < rates.size(); i++) {
++            result[i] = rates.get(i);
++        }
++        return result;
++    }
++
++    private void requestTraversal() {
++        synchronized (mWmService.mGlobalLock) {
++            mWmService.requestTraversal();
++        }
++    }
++
++    private final class SettingsObserver extends ContentObserver {
++        private final Uri mRefreshRateModeUri =
++                Settings.Global.getUriFor(SETTINGS_REFRESH_RATE_MODE);
++        private final Uri mLockscreenLimitUri =
++                Settings.System.getUriFor(LOCKSCREEN_LIMIT_REFRESH_RATE);
++        private final Uri mPerAppRefreshRateUri = Settings.System.getUriFor(PER_APP_REFRESH_RATE);
++
++        SettingsObserver() {
++            super(mHandler);
++            mContext.getContentResolver().registerContentObserver(
++                    mRefreshRateModeUri, false, this, UserHandle.USER_ALL);
++            mContext.getContentResolver().registerContentObserver(
++                    mLockscreenLimitUri, false, this, UserHandle.USER_ALL);
++            mContext.getContentResolver().registerContentObserver(
++                    mPerAppRefreshRateUri, false, this, UserHandle.USER_ALL);
++        }
++
++        @Override
++        public void onChange(boolean selfChange, Uri uri) {
++            if (mPerAppRefreshRateUri.equals(uri)) {
++                loadPerAppRefreshRates();
++                refreshFocusedAppOverrides();
++                boostActiveDisplayIfNeeded();
++                syncAndRequestTraversal();
++                return;
++            }
++            final boolean wasDynamic = isDynamicMode();
++            loadRefreshRateSetting();
++            if (!wasDynamic) {
++                boostActiveDisplayIfNeeded();
++            }
++            syncAndRequestTraversal();
++        }
++    }
++}
+diff --git a/services/core/java/com/android/server/wm/DisplayContent.java b/services/core/java/com/android/server/wm/DisplayContent.java
+index 8d08808653977eae91c2f459001829e4a54f6648..41e826a688a2451de854c268d3f5f1ce48286df5 100644
+--- a/services/core/java/com/android/server/wm/DisplayContent.java
++++ b/services/core/java/com/android/server/wm/DisplayContent.java
+@@ -1267,6 +1267,13 @@ class DisplayContent extends RootDisplayArea implements WindowManagerPolicy.Disp
+         mWmService.mInputManager.setInTouchMode(mInTouchMode, mWmService.MY_PID, mWmService.MY_UID,
+                 /* hasPermission= */ true, mDisplayId);
+         mAppCompatCameraPolicy.start();
++        final AxRefreshRateController refreshRateController =
++                AxRefreshRateController.getInstance();
++        if (isDefaultDisplay) {
++            refreshRateController.init(mWmService.mContext, mWmService);
++        } else {
++            refreshRateController.onDisplayAdded(mDisplayId);
++        }
+     }
+ 
+     private void beginHoldScreenUpdate() {
+@@ -3052,6 +3059,7 @@ class DisplayContent extends RootDisplayArea implements WindowManagerPolicy.Disp
+     void onDisplayChanged(DisplayContent dc) {
+         super.onDisplayChanged(dc);
+         updateSystemGestureExclusionLimit();
++        AxRefreshRateController.getInstance().onDisplayChanged(mDisplayId);
+     }
+ 
+     void updateSystemGestureExclusionLimit() {
+@@ -3497,6 +3505,7 @@ class DisplayContent extends RootDisplayArea implements WindowManagerPolicy.Disp
+     @Override
+     void removeImmediately() {
+         mDeferredRemoval = false;
++        AxRefreshRateController.getInstance().onDisplayRemoved(mDisplayId);
+         try {
+             if (DesktopExperienceFlags.ENABLE_DISPLAY_CONTENT_MODE_MANAGEMENT.isTrue()
+                     && mWmService.mDisplayWindowSettings.shouldShowSystemDecorsLocked(this)) {
+@@ -4165,6 +4174,7 @@ class DisplayContent extends RootDisplayArea implements WindowManagerPolicy.Disp
+             }
+         }
+         getInputMonitor().setFocusedAppLw(newFocus);
++        AxRefreshRateController.getInstance().updateFocusedApp(mDisplayId, newFocus);
+         return true;
+     }
+ 
+@@ -5221,6 +5231,20 @@ class DisplayContent extends RootDisplayArea implements WindowManagerPolicy.Disp
+ 
+         mLastHasContent = mTmpApplySurfaceChangesTransactionState.displayHasContent;
+         if (!inTransition()) {
++            final AxRefreshRateController axRrc = AxRefreshRateController.getInstance();
++            axRrc.updateVoteResult(mDisplayId);
++            if (axRrc.hasActiveVote()) {
++                mTmpApplySurfaceChangesTransactionState.preferredModeId = 0;
++                mTmpApplySurfaceChangesTransactionState.preferredRefreshRate = 0;
++                final float axMin = axRrc.getMinPreferredRate();
++                final float axMax = axRrc.getMaxPreferredRate();
++                mTmpApplySurfaceChangesTransactionState.preferredMinRefreshRate = axMin;
++                mTmpApplySurfaceChangesTransactionState.preferredMaxRefreshRate = axMax;
++                if (axMin > 0 && Math.abs(axMin - axMax) < 1.0f
++                        && mDisplayInfo.findDefaultModeByRefreshRate(axMax) != null) {
++                    mTmpApplySurfaceChangesTransactionState.preferredRefreshRate = axMax;
++                }
++            }
+             mWmService.mDisplayManagerInternal.setDisplayProperties(mDisplayId,
+                     mLastHasContent,
+                     mTmpApplySurfaceChangesTransactionState.preferredRefreshRate,
+diff --git a/services/core/java/com/android/server/wm/DisplayPolicy.java b/services/core/java/com/android/server/wm/DisplayPolicy.java
+index 1e5f99d0ed8e0fd6647eb1e3f8a7d38aea562d0d..ddc50c5628da8da54f4b33c0bef54daadab85018 100644
+--- a/services/core/java/com/android/server/wm/DisplayPolicy.java
++++ b/services/core/java/com/android/server/wm/DisplayPolicy.java
+@@ -575,6 +575,8 @@ public class DisplayPolicy {
+                     if (dragonite != null) {
+                         dragonite.onSystemFling(duration + 160);
+                     }
++                    AxRefreshRateController.getInstance().setFlingBoost(
++                            mDisplayContent.getDisplayId(), duration + 160L);
+                 }
+ 
+                 @Override
+@@ -1460,6 +1462,9 @@ public class DisplayPolicy {
+             mNavigationBar = null;
+         } else if (mNotificationShade == win) {
+             mNotificationShade = null;
++            if (mDisplayContent.isDefaultDisplay) {
++                AxRefreshRateController.getInstance().setNotificationShadeExpanded(false);
++            }
+         }
+         if (mLastFocusedWindow == win) {
+             mLastFocusedWindow = null;
+diff --git a/services/core/java/com/android/server/wm/FreeformOverlayManagerService.java b/services/core/java/com/android/server/wm/FreeformOverlayManagerService.java
+index 26ab1ee3ee1b832d82a9bcef3a775b6b2267f33b..bfa494082e22c5d787ad89f44137ba733b0e7d6f 100644
+--- a/services/core/java/com/android/server/wm/FreeformOverlayManagerService.java
++++ b/services/core/java/com/android/server/wm/FreeformOverlayManagerService.java
+@@ -96,6 +96,7 @@ public class FreeformOverlayManagerService extends SystemService {
+                 Intent intent = new Intent(ACTION_BRING_ALL_TO_BACK);
+                 intent.setClassName(EDGE_SERVICE_PACKAGE, EDGE_SERVICE_CLASS);
+                 getContext().startServiceAsUser(intent, UserHandle.CURRENT);
++                AxRefreshRateController.getInstance().onAllFreeformDisplaysHidden();
+             } finally {
+                 Binder.restoreCallingIdentity(token);
+             }
+@@ -128,6 +129,8 @@ public class FreeformOverlayManagerService extends SystemService {
+                 if (dmi != null) {
+                     dmi.pauseFreeformDisplay(displayId);
+                 }
++                AxRefreshRateController.getInstance().onFreeformDisplayVisibilityChanged(
++                        displayId, false);
+             } finally {
+                 Binder.restoreCallingIdentity(token);
+             }
+@@ -141,6 +144,8 @@ public class FreeformOverlayManagerService extends SystemService {
+                 if (dmi != null) {
+                     dmi.resumeFreeformDisplay(displayId);
+                 }
++                AxRefreshRateController.getInstance().onFreeformDisplayVisibilityChanged(
++                        displayId, true);
+             } finally {
+                 Binder.restoreCallingIdentity(token);
+             }
+diff --git a/services/core/java/com/android/server/wm/KeyguardController.java b/services/core/java/com/android/server/wm/KeyguardController.java
+index f7eb1579b77dc0cf4cc5f429a300930720f9fc82..e693c2dfe6616930fcc0adf6a2ac4c19a574e08f 100644
+--- a/services/core/java/com/android/server/wm/KeyguardController.java
++++ b/services/core/java/com/android/server/wm/KeyguardController.java
+@@ -246,6 +246,7 @@ class KeyguardController {
+         state.writeEventLog("setKeyguardShown");
+ 
+         if (displayId == DEFAULT_DISPLAY && keyguardChanged) {
++            AxRefreshRateController.getInstance().setKeyguardDone(!keyguardShowing);
+             final GameSpaceService gameSpaceService =
+                     LocalServices.getService(GameSpaceService.class);
+             if (gameSpaceService != null) {
+diff --git a/services/core/java/com/android/server/wm/PointerEventDispatcher.java b/services/core/java/com/android/server/wm/PointerEventDispatcher.java
+index 3dd5f88c74cb9b907a9ff9f262b8a96dc1414762..3354a40e8edb943cea18e265ef0dca4b0963418b 100644
+--- a/services/core/java/com/android/server/wm/PointerEventDispatcher.java
++++ b/services/core/java/com/android/server/wm/PointerEventDispatcher.java
+@@ -47,6 +47,8 @@ public class PointerEventDispatcher extends InputEventReceiver {
+                     dragonite.inputBoost();
+                 }
+                 MotionEvent motionEvent = (MotionEvent) event;
++                AxRefreshRateController.getInstance().onPointerEvent(
++                        motionEvent.getDisplayId(), motionEvent.getActionMasked());
+                 PointerEventListener[] listeners;
+                 synchronized (mListeners) {
+                     if (mListenersArray == null) {
+diff --git a/services/core/java/com/android/server/wm/TransitionController.java b/services/core/java/com/android/server/wm/TransitionController.java
+index eace57ac234c713c130d5a74cb3d2bcdf0b792de..b7bfba8ca6dfe05807740d3ed28978e7d6a721e7 100644
+--- a/services/core/java/com/android/server/wm/TransitionController.java
++++ b/services/core/java/com/android/server/wm/TransitionController.java
+@@ -1431,6 +1431,7 @@ class TransitionController {
+         final boolean animatingState = !mPlayingTransitions.isEmpty()
+                     || (mCollectingTransition != null && mCollectingTransition.isStarted());
+         if (animatingState && !mAnimatingState) {
++            AxRefreshRateController.getInstance().setAnimationBoost(DEFAULT_TIMEOUT_MS);
+             // Note that Transition#start() can be called before adding participants, so the
+             // enableHighPerfTransition(true) is also called in Transition#recordDisplay.
+             for (int i = mAtm.mRootWindowContainer.getChildCount() - 1; i >= 0; i--) {
+@@ -1452,6 +1453,7 @@ class TransitionController {
+             mAnimatingState = true;
+             Transition.asyncTraceBegin("animating", 0x41bfaf1 /* hashcode of TAG */);
+         } else if (!animatingState && mAnimatingState) {
++            AxRefreshRateController.getInstance().clearAnimationBoost();
+             for (int i = mAtm.mRootWindowContainer.getChildCount() - 1; i >= 0; i--) {
+                 mAtm.mRootWindowContainer.getChildAt(i).enableHighPerfTransition(false);
+             }
+diff --git a/services/core/java/com/android/server/wm/WindowManagerService.java b/services/core/java/com/android/server/wm/WindowManagerService.java
+index 08f3c1f32f395e2111e385900bc950bbfb080ce3..b18b6df4f5adabd86770ac45a344c5fa23af5d6c 100644
+--- a/services/core/java/com/android/server/wm/WindowManagerService.java
++++ b/services/core/java/com/android/server/wm/WindowManagerService.java
+@@ -3524,6 +3524,7 @@ public class WindowManagerService extends IWindowManager.Stub
+ 
+     @Override
+     public void onUserSwitched() {
++        AxRefreshRateController.getInstance().onUserSwitched();
+         synchronized (mGlobalLock) {
+             // force a re-application of focused window sysui visibility on each display.
+             mRoot.forAllDisplayPolicies(DisplayPolicy::resetSystemBarAttributes);
+@@ -8120,6 +8121,9 @@ public class WindowManagerService extends IWindowManager.Stub
+             if (w == null || w != w.mDisplayContent.getDisplayPolicy().getNotificationShade()) {
+                 return;
+             }
++            if (w.getDisplayId() == DEFAULT_DISPLAY) {
++                AxRefreshRateController.getInstance().setNotificationShadeExpanded(expanded);
++            }
+             final WindowProcessController topApp = mAtmService.mTopApp;
+             // Demotes the priority of top app if notification shade is expanded to occlude the app.
+             // So the notification shade may have more capacity to draw and animate.

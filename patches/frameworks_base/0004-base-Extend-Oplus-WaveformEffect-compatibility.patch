@@ -1,15 +1,12 @@
-From f3c4dee2594f05877318b206213a6722460c607d Mon Sep 17 00:00:00 2001
+From cae3a25d80d6ccb7bc5ace6aed0e4ccc79270ac9 Mon Sep 17 00:00:00 2001
 From: blazerpaul15 <blazerpaul15@gmail.com>
 Date: Wed, 15 Jul 2026 22:04:29 +0900
-Subject: [PATCH 4/8] base: Extend Oplus WaveformEffect compatibility
+Subject: [PATCH] base: Extend Oplus WaveformEffect compatibility
 
 Change-Id: Iffc7b8843822f67760a482c4049282457d2baec4
----
- core/java/com/oplus/os/WaveformEffect.java | 1063 +++++++++++++++++++-
- 1 file changed, 1018 insertions(+), 45 deletions(-)
 
 diff --git a/core/java/com/oplus/os/WaveformEffect.java b/core/java/com/oplus/os/WaveformEffect.java
-index 8466f78bed1a..052560b0d600 100644
+index 8466f78bed1ada52c04560d29b6b8b0f2ddb9e40..052560b0d60005601c50ea9a8e043b40d8857ab4 100644
 --- a/core/java/com/oplus/os/WaveformEffect.java
 +++ b/core/java/com/oplus/os/WaveformEffect.java
 @@ -5,93 +5,1066 @@

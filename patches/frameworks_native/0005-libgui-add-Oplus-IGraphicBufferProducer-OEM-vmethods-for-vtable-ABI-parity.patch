@@ -1,7 +1,7 @@
-From 946566df661c4252cb6bf3423f322c1ebcf046b5 Mon Sep 17 00:00:00 2001
+From 37f68ad4a7fe901ff32c9226fa7cb940f86d166e Mon Sep 17 00:00:00 2001
 From: 1vivy <1vivy@tutanota.com>
 Date: Wed, 15 Jul 2026 17:42:12 +0000
-Subject: [PATCH 5/5] libgui: add Oplus IGraphicBufferProducer OEM vmethods for
+Subject: [PATCH] libgui: add Oplus IGraphicBufferProducer OEM vmethods for
  vtable-ABI parity
 
 OnePlus/Oplus OOS libgui adds 7 virtual methods to IGraphicBufferProducer,
@@ -46,13 +46,9 @@ not call libNativeWinBuffExchange).
 
 Change-Id: I0a2dc5474b300c1f0a8c79b054ee58481a7f2a35
 (cherry picked from commit a143a41d874966d1837d380afba8b776550bb45d)
----
- libs/gui/IGraphicBufferProducer.cpp           | 43 +++++++++++++++++++
- libs/gui/include/gui/IGraphicBufferProducer.h | 27 ++++++++++++
- 2 files changed, 70 insertions(+)
 
 diff --git a/libs/gui/IGraphicBufferProducer.cpp b/libs/gui/IGraphicBufferProducer.cpp
-index 786a2aed2d..d23de626f3 100644
+index 786a2aed2d5107eb5b72b43f770812240fa0f76f..d23de626f3e0d61d2fd01645bec4376e512cf10b 100644
 --- a/libs/gui/IGraphicBufferProducer.cpp
 +++ b/libs/gui/IGraphicBufferProducer.cpp
 @@ -1024,6 +1024,49 @@ status_t IGraphicBufferProducer::setFrameRate(float /*frameRate*/, int8_t /*comp
@@ -106,7 +102,7 @@ index 786a2aed2d..d23de626f3 100644
  status_t IGraphicBufferProducer::setAdditionalOptions(const std::vector<gui::AdditionalOptions>&) {
      // No-op for IGBP other than BufferQueue.
 diff --git a/libs/gui/include/gui/IGraphicBufferProducer.h b/libs/gui/include/gui/IGraphicBufferProducer.h
-index 57478a0ba3..864b6f0a3e 100644
+index 57478a0ba3116843cd3c9b18b6f7ce27573ee7f3..864b6f0a3ec320be03d4bfd3729d346fda878b41 100644
 --- a/libs/gui/include/gui/IGraphicBufferProducer.h
 +++ b/libs/gui/include/gui/IGraphicBufferProducer.h
 @@ -634,6 +634,16 @@ public:

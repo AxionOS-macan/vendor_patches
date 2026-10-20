@@ -1,17 +1,13 @@
-From bc97e91f6d107cf3fdca5ecfea957dbc97d9c8bd Mon Sep 17 00:00:00 2001
+From bbf0e7fffe846a91e72fe5d89a20afbf74d95f36 Mon Sep 17 00:00:00 2001
 From: realahnet <syedmusicrealise@gmail.com>
 Date: Wed, 1 Jul 2026 00:54:38 +0500
-Subject: [PATCH 7/9] libcameraservice: Conditionally allow bypassing camera
- buffer error if frame timestamp is decreasing
+Subject: [PATCH] libcameraservice: Conditionally allow bypassing camera buffer
+ error if frame timestamp is decreasing
 
 * Some devices may have a bug where the timestamp reported by the HAL seems to have decreasing timestamp with each frame. Bypass this error for such devices
----
- services/camera/libcameraservice/Android.bp                | 3 +++
- services/camera/libcameraservice/device3/Camera3Stream.cpp | 4 ++++
- 2 files changed, 7 insertions(+)
 
 diff --git a/services/camera/libcameraservice/Android.bp b/services/camera/libcameraservice/Android.bp
-index 823165e67e..bd424b7c23 100644
+index 823165e67e5ee324784259e01018b505a1067021..bd424b7c236a866bbc0ececfae212874e9ac700a 100644
 --- a/services/camera/libcameraservice/Android.bp
 +++ b/services/camera/libcameraservice/Android.bp
 @@ -266,6 +266,9 @@ cc_library {
@@ -25,7 +21,7 @@ index 823165e67e..bd424b7c23 100644
      whole_static_libs: select(soong_config_variable("libcameraservice", "ext_lib"), {
          any @ flag_val: [flag_val],
 diff --git a/services/camera/libcameraservice/device3/Camera3Stream.cpp b/services/camera/libcameraservice/device3/Camera3Stream.cpp
-index 6a44ee38be..aeb60f0105 100644
+index 6a44ee38bebe06602dfda3a7eb3454383028789a..aeb60f01052ada1b8d458eae2febe1482c1bf355 100644
 --- a/services/camera/libcameraservice/device3/Camera3Stream.cpp
 +++ b/services/camera/libcameraservice/device3/Camera3Stream.cpp
 @@ -778,12 +778,16 @@ status_t Camera3Stream::returnBuffer(const camera_stream_buffer &buffer,

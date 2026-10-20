@@ -1,14 +1,11 @@
-From d949446f25e133354dc0ed784040cfac0f58d8cb Mon Sep 17 00:00:00 2001
+From f3738818879e63c3297cb9163146976f5ee4e0e0 Mon Sep 17 00:00:00 2001
 From: Jonas Salo <salomannen1234@gmail.com>
 Date: Wed, 8 Jul 2026 17:46:56 +0200
-Subject: [PATCH 3/8] Gainmap: add Oplus HDR scale accessors
+Subject: [PATCH] Gainmap: add Oplus HDR scale accessors
 
----
- graphics/java/android/graphics/Gainmap.java | 20 ++++++++++++++++++++
- 1 file changed, 20 insertions(+)
 
 diff --git a/graphics/java/android/graphics/Gainmap.java b/graphics/java/android/graphics/Gainmap.java
-index 1c8f0ccde7e1..75db3aea1de9 100644
+index 1c8f0ccde7e131ac7706a274f53605177e54112c..75db3aea1de90ffb84d7f29e2e9cfed11e7d5a09 100644
 --- a/graphics/java/android/graphics/Gainmap.java
 +++ b/graphics/java/android/graphics/Gainmap.java
 @@ -379,6 +379,26 @@ public final class Gainmap implements Parcelable {

@@ -1,19 +1,13 @@
-From 18b8e27c69abc32dfa00f302075e54ec6c32f652 Mon Sep 17 00:00:00 2001
+From d176f3af9ecaebde4d8e60685af632e562b8084e Mon Sep 17 00:00:00 2001
 From: spkal01 <kalligeross@gmail.com>
 Date: Sun, 31 May 2026 17:00:13 +0300
-Subject: [PATCH 7/8] core: AHardwareBuffer fixes for oplus camera
+Subject: [PATCH] core: AHardwareBuffer fixes for oplus camera
 
 Change-Id: I8a5b5c27654690b8b14c1023126d273544ada872
 Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
----
- .../java/android/hardware/HardwareBuffer.java | 22 +++++++++++++--
- core/java/android/media/ImageReader.java      | 10 +++++++
- core/java/android/view/SurfaceView.java       |  4 +++
- core/jni/android_media_ImageReader.cpp        | 28 +++++++++++++++++++
- 4 files changed, 62 insertions(+), 2 deletions(-)
 
 diff --git a/core/java/android/hardware/HardwareBuffer.java b/core/java/android/hardware/HardwareBuffer.java
-index b132fd4ac67d..8ce5b56af6c0 100644
+index b132fd4ac67d0d76ddbf6b1a2ef2524f13367c9e..8ce5b56af6c03297524418ca6bdb79452b36f167 100644
 --- a/core/java/android/hardware/HardwareBuffer.java
 +++ b/core/java/android/hardware/HardwareBuffer.java
 @@ -400,6 +400,19 @@ public final class HardwareBuffer implements Parcelable, AutoCloseable {
@@ -53,7 +47,7 @@ index b132fd4ac67d..8ce5b56af6c0 100644
      }
  
 diff --git a/core/java/android/media/ImageReader.java b/core/java/android/media/ImageReader.java
-index 823168779e2a..3d44fbc1a841 100644
+index 823168779e2a3b5648b4872a79378e699d7178e1..3d44fbc1a841fdde97529f9b7330520d051f8850 100644
 --- a/core/java/android/media/ImageReader.java
 +++ b/core/java/android/media/ImageReader.java
 @@ -1292,6 +1292,15 @@ public class ImageReader implements AutoCloseable {
@@ -81,7 +75,7 @@ index 823168779e2a..3d44fbc1a841 100644
  
      private synchronized native void nativeInit(Object weakSelf, int w, int h, int maxImgs,
 diff --git a/core/java/android/view/SurfaceView.java b/core/java/android/view/SurfaceView.java
-index c0208f0f5a70..4e3985625c22 100644
+index c0208f0f5a7053fecbe41a2646137e5b212595f4..4e3985625c22c27d79c96fcf7e273090c1ddef27 100644
 --- a/core/java/android/view/SurfaceView.java
 +++ b/core/java/android/view/SurfaceView.java
 @@ -2510,4 +2510,8 @@ public class SurfaceView extends View implements ViewRootImpl.SurfaceChangedCall
@@ -94,7 +88,7 @@ index c0208f0f5a70..4e3985625c22 100644
 +    }
  }
 diff --git a/core/jni/android_media_ImageReader.cpp b/core/jni/android_media_ImageReader.cpp
-index 58682b0407b9..c535543d5968 100644
+index 58682b0407b9328ba2c32524a73ce0adb7f46a8f..c535543d596884a93937110b79b4f505c9d9fb3c 100644
 --- a/core/jni/android_media_ImageReader.cpp
 +++ b/core/jni/android_media_ImageReader.cpp
 @@ -1035,6 +1035,32 @@ static jobject Image_getHardwareBuffer(JNIEnv* env, jobject thiz) {

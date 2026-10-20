@@ -1,4 +1,4 @@
-From 1ddd11b4c79ac24b339d28776c4933a8ba7a7e8b Mon Sep 17 00:00:00 2001
+From c878453e46e3ada4eafcaf685afd5784279457e8 Mon Sep 17 00:00:00 2001
 From: blazerpaul15 <blazerpaul15@gmail.com>
 Date: Thu, 16 Jul 2026 19:02:54 +0900
 Subject: [PATCH] LineageParts: Add assist key camera shutter toggle [2]
@@ -6,17 +6,12 @@ Subject: [PATCH] LineageParts: Add assist key camera shutter toggle [2]
 Search button > Plus Key
 
 Change-Id: Ic79a5b56c6afa5d434e619785ca6fd8f93896474
----
- res/values/strings.xml                                   | 4 +++-
- res/xml/button_settings.xml                              | 6 ++++++
- src/org/lineageos/lineageparts/input/ButtonSettings.java | 2 ++
- 3 files changed, 11 insertions(+), 1 deletion(-)
 
 diff --git a/res/values/strings.xml b/res/values/strings.xml
-index a8abfca..08acf1a 100644
+index 1a14d8ab376171931c2a8387741c9c4dcce02e54..0fe103ebf4142b250904b3be7406e21bde9bd093 100644
 --- a/res/values/strings.xml
 +++ b/res/values/strings.xml
-@@ -182,7 +182,7 @@
+@@ -183,7 +183,7 @@
      <string name="hardware_keys_home_key_title">Home button</string>
      <string name="hardware_keys_back_key_title">Back button</string>
      <string name="hardware_keys_menu_key_title">Menu button</string>
@@ -25,7 +20,7 @@ index a8abfca..08acf1a 100644
      <string name="hardware_keys_appswitch_key_title">Recents button</string>
      <string name="hardware_keys_camera_key_title">Camera button</string>
      <string name="hardware_keys_volume_keys_title">Volume buttons</string>
-@@ -228,6 +228,8 @@
+@@ -229,6 +229,8 @@
      <string name="volume_panel_position_left">Left</string>
      <string name="volume_panel_position_right">Right</string>
      <string name="button_wake_title">Wake device</string>
@@ -35,7 +30,7 @@ index a8abfca..08acf1a 100644
      <string name="volume_answer_call_summary">Answer incoming calls by pressing the volume buttons</string>
      <string name="home_answer_call_title">Answer call</string>
 diff --git a/res/xml/button_settings.xml b/res/xml/button_settings.xml
-index 6986cd5..bf2abf2 100644
+index 6986cd55309d193d4df634f92d5d75837d753da6..bf2abf211d9399daebc913e7730ac1133ec44128 100644
 --- a/res/xml/button_settings.xml
 +++ b/res/xml/button_settings.xml
 @@ -207,6 +207,12 @@
@@ -52,7 +47,7 @@ index 6986cd5..bf2abf2 100644
              android:key="hardware_keys_assist_press"
              android:dialogTitle="@string/hardware_keys_short_press_title"
 diff --git a/src/org/lineageos/lineageparts/input/ButtonSettings.java b/src/org/lineageos/lineageparts/input/ButtonSettings.java
-index 6f46d17..ffd9110 100644
+index 6f46d1781b2133068add848938886e382998311a..ffd9110d994da9aa91a81acd90d50ec2d05bfaf3 100644
 --- a/src/org/lineageos/lineageparts/input/ButtonSettings.java
 +++ b/src/org/lineageos/lineageparts/input/ButtonSettings.java
 @@ -72,6 +72,7 @@ public class ButtonSettings extends SettingsPreferenceFragment
@@ -63,7 +58,7 @@ index 6f46d17..ffd9110 100644
      private static final String KEY_APP_SWITCH_PRESS = "hardware_keys_app_switch_press";
      private static final String KEY_APP_SWITCH_LONG_PRESS = "hardware_keys_app_switch_long_press";
      private static final String KEY_APP_SWITCH_WAKE_SCREEN = "app_switch_wake_screen";
-@@ -915,6 +916,7 @@ public Set<String> getNonIndexableKeys(Context context) {
+@@ -915,6 +916,7 @@ public class ButtonSettings extends SettingsPreferenceFragment
                  result.add(KEY_ASSIST_PRESS);
                  result.add(KEY_ASSIST_LONG_PRESS);
                  result.add(KEY_ASSIST_WAKE_SCREEN);

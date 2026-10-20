@@ -1,0 +1,69 @@
+From f9ac78f0a42b3077a4b7c4550672955e7afe9cc1 Mon Sep 17 00:00:00 2001
+From: blazerpaul15 <blazerpaul15@gmail.com>
+Date: Sun, 9 Aug 2026 09:28:28 +0900
+Subject: [PATCH] AxionParts: Add AOD brightness
+
+Change-Id: I2d2af6f1e458140a6d6335a59114831ed656276d
+
+diff --git a/res/values/strings.xml b/res/values/strings.xml
+index 304a20dbf09c84b165b4806c3cceded5b739a740..60890063fa894db3c020076a55b88399d16c7c31 100644
+--- a/res/values/strings.xml
++++ b/res/values/strings.xml
+@@ -130,6 +130,13 @@
+     <string name="seconds_short">s</string>
+     <string name="screen_off_animation">Screen Off Animation</string>
+     <string name="screen_off_animation_summary">Animate the transition to AOD</string>
++    <string name="aod_brightness">AOD Brightness</string>
++    <string name="aod_low_brightness">Low-light brightness</string>
++    <string name="aod_low_brightness_summary">Brightness used when the AOD sensor reports low light</string>
++    <string name="aod_high_brightness">Bright-light brightness</string>
++    <string name="aod_high_brightness_summary">Brightness used when the AOD sensor reports bright light</string>
++    <string name="aod_pickup_brightness_boost">Boost on pickup</string>
++    <string name="aod_pickup_brightness_boost_summary">Use bright-light brightness after pickup in low light</string>
+     
+     <!-- UI Features -->
+     <string name="user_interface">User Interface</string>
+diff --git a/src/com/android/axion/axionparts/ui/screens/LockscreenFeaturesScreen.kt b/src/com/android/axion/axionparts/ui/screens/LockscreenFeaturesScreen.kt
+index 4285bc6c7f3283dcc21002b5820bc33a71124dee..3eec36ad231cda24dd6e9d44e7225c06c7fb71d0 100644
+--- a/src/com/android/axion/axionparts/ui/screens/LockscreenFeaturesScreen.kt
++++ b/src/com/android/axion/axionparts/ui/screens/LockscreenFeaturesScreen.kt
+@@ -1023,6 +1023,39 @@ fun AodContent(modifier: Modifier = Modifier) {
+             }
+         }
+ 
++        Spacer(modifier = Modifier.height(12.dp))
++
++        PreferenceGroup(title = stringResource(R.string.aod_brightness)) {
++            item {
++                SystemSettingSlider(
++                    settingKey = "aod_low_brightness",
++                    title = stringResource(R.string.aod_low_brightness),
++                    summary = stringResource(R.string.aod_low_brightness_summary),
++                    min = 1,
++                    max = 255,
++                    defaultValue = 8,
++                )
++            }
++            item {
++                SystemSettingSlider(
++                    settingKey = "aod_high_brightness",
++                    title = stringResource(R.string.aod_high_brightness),
++                    summary = stringResource(R.string.aod_high_brightness_summary),
++                    min = 1,
++                    max = 255,
++                    defaultValue = 60,
++                )
++            }
++            item {
++                SystemSettingSwitch(
++                    settingKey = "aod_pickup_brightness_boost",
++                    title = stringResource(R.string.aod_pickup_brightness_boost),
++                    summary = stringResource(R.string.aod_pickup_brightness_boost_summary),
++                    defaultValue = false,
++                )
++            }
++        }
++
+         AnimatedVisibility(
+             visible = scheduleMode == "3" || scheduleMode == "4",
+             enter = fadeIn() + expandVertically(),

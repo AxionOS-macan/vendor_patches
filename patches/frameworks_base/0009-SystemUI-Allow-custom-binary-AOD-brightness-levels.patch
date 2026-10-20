@@ -1,17 +1,14 @@
-From 22fba8dfc46c509b773d3d1265ddc25e542c33d1 Mon Sep 17 00:00:00 2001
+From 4aefa953f967d4a744300043a125f956e2f4fe5d Mon Sep 17 00:00:00 2001
 From: Jonas Salo <salomannen1234@gmail.com>
 Date: Thu, 9 Jul 2026 21:34:04 +0200
 Subject: [PATCH] SystemUI: Allow custom binary AOD brightness levels
 
----
- .../systemui/doze/DozeScreenBrightness.java   | 30 ++++++++++++++++++-
- 1 file changed, 29 insertions(+), 1 deletion(-)
 
 diff --git a/packages/SystemUI/src/com/android/systemui/doze/DozeScreenBrightness.java b/packages/SystemUI/src/com/android/systemui/doze/DozeScreenBrightness.java
-index 59310bfef134a..f50e2444ff05a 100644
+index 59310bfef134a1794d3e58fe802b7dfba3c4329f..f50e2444ff05a8c25c706e910a6b30344965c044 100644
 --- a/packages/SystemUI/src/com/android/systemui/doze/DozeScreenBrightness.java
 +++ b/packages/SystemUI/src/com/android/systemui/doze/DozeScreenBrightness.java
-@@ -26,6 +26,7 @@
+@@ -26,6 +26,7 @@ import android.annotation.SuppressLint;
  import android.content.BroadcastReceiver;
  import android.content.Context;
  import android.content.Intent;
@@ -36,7 +33,7 @@ index 59310bfef134a..f50e2444ff05a 100644
      private Job mWallpaperSupportsAmbientModeJob = null;
      private boolean mWallpaperSupportsAmbientMode;
      private final float[] mSensorToBrightness;
-@@ -179,6 +183,18 @@ public DozeScreenBrightness(
+@@ -179,6 +183,18 @@ public class DozeScreenBrightness extends BroadcastReceiver implements DozeMachi
          mSensorToWallpaperScrimOpacity = alwaysOnDisplayPolicy.wallpaperDimmingScrimArray;
  
          mDevicePostureController.addCallback(mDevicePostureCallback);
@@ -55,7 +52,7 @@ index 59310bfef134a..f50e2444ff05a 100644
      }
  
      @Override
-@@ -217,6 +233,7 @@ private void onDestroy() {
+@@ -217,6 +233,7 @@ public class DozeScreenBrightness extends BroadcastReceiver implements DozeMachi
          stopListeningForWallpaperSupportsAmbientMode();
          setLightSensorEnabled(false);
          mDevicePostureController.removeCallback(mDevicePostureCallback);
@@ -63,7 +60,7 @@ index 59310bfef134a..f50e2444ff05a 100644
          if (SceneContainerFlag.isEnabled()) {
              mDozeHost.setAodDimmingScrim(0f);
              mDozeHost.setAodWallpaperDimmingScrim(0f);
-@@ -315,7 +332,18 @@ private float computeBrightness(int sensorValue) {
+@@ -315,7 +332,18 @@ public class DozeScreenBrightness extends BroadcastReceiver implements DozeMachi
          if (sensorValue < 0 || sensorValue >= mSensorToBrightness.length) {
              return -1;
          }

@@ -1,0 +1,133 @@
+From cafaa26703bad671880ac3cf44fda23d15a2e000 Mon Sep 17 00:00:00 2001
+From: blazerpaul15 <blazerpaul15@gmail.com>
+Date: Sun, 23 Aug 2026 15:49:01 +0900
+Subject: [PATCH] SystemUI: Fix charging icon after unplug
+
+Update the status-bar battery icon using the real charging state so it
+correctly disappears after the charger is disconnected.
+
+Change-Id: I2d5d343e0a5883aa7bca47f0a03c8a1391fe852b
+
+diff --git a/packages/SystemUI/src/com/android/systemui/battery/BatteryMeterView.java b/packages/SystemUI/src/com/android/systemui/battery/BatteryMeterView.java
+index 1806e4e60b56230f8be91b27de1be94e4e84e893..71edc230f19cde9cdb42be4ba86cb6d7a00ac407 100644
+--- a/packages/SystemUI/src/com/android/systemui/battery/BatteryMeterView.java
++++ b/packages/SystemUI/src/com/android/systemui/battery/BatteryMeterView.java
+@@ -232,11 +232,11 @@ public class BatteryMeterView extends LinearLayout implements DarkReceiver {
+      * Update battery level
+      *
+      * @param level     int between 0 and 100 (representing percentage value)
+-     * @param pluggedIn whether the device is plugged in or not
++     * @param charging whether the device is actively charging
+      */
+-    public void onBatteryLevelChanged(@IntRange(from = 0, to = 100) int level, boolean pluggedIn) {
++    public void onBatteryLevelChanged(@IntRange(from = 0, to = 100) int level, boolean charging) {
+         boolean wasCharging = isCharging();
+-        mPluggedIn = pluggedIn;
++        mPluggedIn = charging;
+         mLevel = level;
+         boolean isCharging = isCharging();
+         mDrawable.setCharging(isCharging);
+diff --git a/packages/SystemUI/src/com/android/systemui/battery/BatteryMeterViewController.java b/packages/SystemUI/src/com/android/systemui/battery/BatteryMeterViewController.java
+index fcf51051940c8b1d5360fea5c8e246ba65d01c54..f0be706632ab4614bde4a1fa6ebd2c520f5e392d 100644
+--- a/packages/SystemUI/src/com/android/systemui/battery/BatteryMeterViewController.java
++++ b/packages/SystemUI/src/com/android/systemui/battery/BatteryMeterViewController.java
+@@ -86,7 +86,7 @@ public class BatteryMeterViewController extends ViewController<BatteryMeterView>
+             new BatteryController.BatteryStateChangeCallback() {
+                 @Override
+                 public void onBatteryLevelChanged(int level, boolean pluggedIn, boolean charging) {
+-                    mView.onBatteryLevelChanged(level, pluggedIn);
++                    mView.onBatteryLevelChanged(level, charging);
+                 }
+ 
+                 @Override
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/data/repository/BatteryRepository.kt b/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/data/repository/BatteryRepository.kt
+index 408bd1ee081791d2775ab9e3d1e49e12b8b14d17..e4822f9b4e70579f9423c5f0f9ef774a461931f8 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/data/repository/BatteryRepository.kt
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/data/repository/BatteryRepository.kt
+@@ -63,6 +63,9 @@ interface BatteryRepository {
+      */
+     val isPluggedIn: Flow<Boolean>
+ 
++    /** True when the battery is actively charging. */
++    val isCharging: Flow<Boolean>
++
+     /** Is power saver enabled */
+     val isPowerSaveEnabled: Flow<Boolean>
+ 
+@@ -160,7 +163,13 @@ constructor(
+                             pluggedIn: Boolean,
+                             charging: Boolean,
+                         ) {
+-                            trySend { prev -> prev.copy(level = level, isPluggedIn = pluggedIn) }
++                            trySend { prev ->
++                                prev.copy(
++                                    level = level,
++                                    isPluggedIn = pluggedIn,
++                                    isCharging = charging,
++                                )
++                            }
+                         }
+ 
+                         override fun onPowerSaveChanged(isPowerSave: Boolean) {
+@@ -216,6 +225,12 @@ constructor(
+             )
+             .stateIn(scope, SharingStarted.WhileSubscribed(), batteryState.value.isPluggedIn)
+ 
++    override val isCharging =
++        batteryState
++            .map { it.isCharging }
++            .distinctUntilChanged()
++            .stateIn(scope, SharingStarted.WhileSubscribed(), batteryState.value.isCharging)
++
+     override val isPowerSaveEnabled =
+         batteryState
+             .map { it.isPowerSaveEnabled }
+@@ -443,6 +458,7 @@ constructor(
+ private data class BatteryCallbackState(
+     val level: Int? = null,
+     val isPluggedIn: Boolean = false,
++    val isCharging: Boolean = false,
+     val isPowerSaveEnabled: Boolean = false,
+     val isExtremePowerSaveEnabled: Boolean = false,
+     val isBatteryDefenderEnabled: Boolean = false,
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/domain/interactor/BatteryInteractor.kt b/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/domain/interactor/BatteryInteractor.kt
+index 2391244829ee0ee4a2063c53ce694434d9ab63c1..c5a2e9099c50f389163f9b3f24b21da1330160c7 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/domain/interactor/BatteryInteractor.kt
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/pipeline/battery/domain/interactor/BatteryInteractor.kt
+@@ -53,15 +53,13 @@ class BatteryInteractor @Inject constructor(
+     val isPluggedIn = repo.isPluggedIn
+ 
+     /**
+-     * For the sake of battery views, consider it to be "charging" if plugged in. This allows users
+-     * to easily confirm that the device is properly plugged in, even if its' technically not
+-     * charging due to issues with the source.
++     * The battery is actively charging according to the battery controller.
+      *
+-     * If an incompatible charger is detected, we don't consider the battery to be charging.
++     * If an incompatible charger is detected, we do not consider the battery to be charging.
+      */
+     val isCharging =
+-        combine(repo.isPluggedIn, repo.isIncompatibleCharging) { pluggedIn, incompatible ->
+-            !incompatible && pluggedIn
++        combine(repo.isCharging, repo.isIncompatibleCharging) { charging, incompatible ->
++            !incompatible && charging
+         }
+ 
+     /**
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/policy/BatteryControllerImpl.java b/packages/SystemUI/src/com/android/systemui/statusbar/policy/BatteryControllerImpl.java
+index ddda368cbfa0b93bbaa2c02e8c403570d24e9628..1a4e1be5cb83c1277089731c1c6390f0fd5c918d 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/policy/BatteryControllerImpl.java
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/policy/BatteryControllerImpl.java
+@@ -262,7 +262,11 @@ public class BatteryControllerImpl extends BroadcastReceiver implements BatteryC
+             final int status = intent.getIntExtra(BatteryManager.EXTRA_STATUS,
+                     BatteryManager.BATTERY_STATUS_UNKNOWN);
+             mCharged = status == BatteryManager.BATTERY_STATUS_FULL;
+-            mCharging = mCharged || status == BatteryManager.BATTERY_STATUS_CHARGING;
++            // A full battery can continue to report FULL briefly after the cable is
++            // removed. Do not expose that stale status as charging without a power
++            // source actually being connected.
++            mCharging = mPluggedIn
++                    && (mCharged || status == BatteryManager.BATTERY_STATUS_CHARGING);
+             if (mWirelessCharging != (mCharging
+                     && intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0)
+                     == BatteryManager.BATTERY_PLUGGED_WIRELESS)) {

@@ -1,7 +1,7 @@
-From d0230f4433d8923abf838fee2cab890385c3d6ee Mon Sep 17 00:00:00 2001
+From 980de160a952b274f338954eae9b4f72c1c50520 Mon Sep 17 00:00:00 2001
 From: blazerpaul15 <blazerpaul15@gmail.com>
-Date: Mon, 20 Jul 2026 10:41:11 +0900
-Subject: [PATCH 1/2] AxDiagnostics: Support explicit GPU sysfs nodes
+Date: Sun, 20 Sep 2026 06:59:59 +0900
+Subject: [PATCH] AxDiagnostics: Support explicit GPU sysfs nodes
 
 Allow GPU configs to provide explicit min/max/governor nodes instead of
 assuming devfreq-style min_freq, max_freq and governor files.
@@ -14,86 +14,65 @@ Fix KGSL GPU busy percentage parsing, KGSL reports gpu_busy_percentage with a sp
 (e.g. "30 %"). Trim after removing the percent sign so the value parses
 correctly instead of falling back to 0.
 
-Change-Id: Iaa2f07e4ecb9ed3a75080b41d646328596ca9baa
----
- .../com/axion/diagnostics/data/GpuInfo.kt     | 50 +++++++++++--------
- .../axion/diagnostics/data/KernelConfig.kt    | 20 +++++---
- 2 files changed, 43 insertions(+), 27 deletions(-)
+Change-Id: Ia997cdd117be6ecc8098a61bb7ad83eda675027e
 
-diff --git a/app/src/main/java/com/axion/diagnostics/data/GpuInfo.kt b/app/src/main/java/com/axion/diagnostics/data/GpuInfo.kt
-index 622c537..a712a94 100644
---- a/app/src/main/java/com/axion/diagnostics/data/GpuInfo.kt
-+++ b/app/src/main/java/com/axion/diagnostics/data/GpuInfo.kt
-@@ -43,31 +43,14 @@ object GpuCollector {
-                     val busyFile = File(config.usageNode)
-                     if (busyFile.exists()) {
-                         runCatching {
--                            busyFile.readText().trim().replace("%", "").toInt()
-+                            busyFile.readText().replace("%", "").trim().toInt()
-                         }.getOrDefault(0).coerceIn(0, 100)
-                     } else 0
-                 } else 0
+diff --git a/src/com/axion/diagnostics/data/GpuInfo.kt b/src/com/axion/diagnostics/data/GpuInfo.kt
+index 2c5a48e476002204be771c0beaf206e9f8a8ff1b..18a4b7a4bbb9fe3e36a323868c8b216f52218bc2 100644
+--- a/src/com/axion/diagnostics/data/GpuInfo.kt
++++ b/src/com/axion/diagnostics/data/GpuInfo.kt
+@@ -74,8 +74,8 @@ object GpuCollector {
  
--                val governor = if (config.node != null) {
--                    val govFile = File(config.node, "governor")
--                    if (govFile.exists()) runCatching { govFile.readText().trim() }.getOrDefault("unknown") else "unknown"
--                } else "unknown"
--
--                val maxFreq = if (config.node != null) {
--                    val maxFile = File(config.node, "max_freq")
--                    if (maxFile.exists()) {
--                        val rawMax = runCatching { maxFile.readText().trim().toLong() }.getOrDefault(0L)
--                        KernelConfig.scaleFreqToMhz(rawMax)
--                    } else 0
--                } else 0
--
--                val minFreq = if (config.node != null) {
--                    val minFile = File(config.node, "min_freq")
--                    if (minFile.exists()) {
--                        val rawMin = runCatching { minFile.readText().trim().toLong() }.getOrDefault(0L)
--                        KernelConfig.scaleFreqToMhz(rawMin)
--                    } else 0
--                } else 0
-+                val governor = readGovernor(config)
-+                val maxFreq = readGpuFrequency(config.maxNode, config.node, "max_freq")
-+                val minFreq = readGpuFrequency(config.minNode, config.node, "min_freq")
+         val busy = readBusyFromNode(config.usageNode)
+         val governor = findGpuGovernor()
+-        val maxFreq = readScaledFreqFromNode(config.node, "max_freq")
+-        val minFreq = readScaledFreqFromNode(config.node, "min_freq")
++        val maxFreq = readGpuFrequency(config.maxNode, config.node, "max_freq")
++        val minFreq = readGpuFrequency(config.minNode, config.node, "min_freq")
  
-                 if (curFreq > 0) {
-                     return GpuSnapshot(
-@@ -85,4 +68,29 @@ object GpuCollector {
- 
-         return GpuSnapshot(0, 0, 0, 0, "unavailable", emptyList(), false)
+         return GpuSnapshot(curFreq, maxFreq, minFreq, busy, governor, config.values, true)
      }
-+
+@@ -84,19 +84,31 @@ object GpuCollector {
+         if (node == null) return 0
+         val file = File(node)
+         if (!file.exists()) return 0
+-        return runCatching { file.readText().trim().replace("%", "").toInt() }.getOrDefault(0).coerceIn(0, 100)
++        return runCatching { file.readText().replace("%", "").trim().toInt() }.getOrDefault(0).coerceIn(0, 100)
+     }
+ 
+-    private fun readScaledFreqFromNode(baseNode: String?, fileName: String): Int {
+-        if (baseNode == null) return 0
+-        val file = File(baseNode, fileName)
 +    private fun readGpuFrequency(path: String?, node: String?, fallbackName: String): Int {
 +        val file = path?.let { File(it) } ?: node?.let { File(it, fallbackName) } ?: return 0
-+        if (!file.exists()) return 0
-+        val raw = runCatching { file.readText().trim().toLong() }.getOrDefault(0L)
-+        return if (file.name.endsWith("_clock_mhz")) {
-+            raw.toInt()
-+        } else {
-+            KernelConfig.scaleFreqToMhz(raw)
+         if (!file.exists()) return 0
+         val raw = runCatching { file.readText().trim().toLong() }.getOrDefault(0L)
+-        return KernelConfig.scaleFreqToMhz(raw)
++        return if (file.name.endsWith("_clock_mhz")) raw.toInt() else KernelConfig.scaleFreqToMhz(raw)
+     }
+ 
+     private fun findGpuGovernor(): String {
+-        val configNode = KernelConfig.gpuConfig.node
++        val config = KernelConfig.gpuConfig
++        val configuredGovernorNode = config.governorNode
++        if (configuredGovernorNode != null) {
++            val governorFile = File(configuredGovernorNode)
++            val value = runCatching { governorFile.readText().trim() }.getOrNull()
++            if (!value.isNullOrEmpty()) {
++                return when {
++                    governorFile.name == "pwrscale" && value == "1" -> "pwrscale"
++                    governorFile.name == "pwrscale" && value == "0" -> "fixed"
++                    else -> value
++                }
++            }
 +        }
-+    }
-+
-+    private fun readGovernor(config: GpuConfig): String {
-+        val file = config.governorNode?.let { File(it) }
-+            ?: config.node?.let { File(it, "governor") }
-+            ?: return "unknown"
-+        if (!file.exists()) return "unknown"
-+        val value = runCatching { file.readText().trim() }.getOrDefault("unknown")
-+        return when {
-+            file.name == "pwrscale" && value == "1" -> "pwrscale"
-+            file.name == "pwrscale" && value == "0" -> "fixed"
-+            value.isBlank() -> "unknown"
-+            else -> value
-+        }
-+    }
- }
-diff --git a/app/src/main/java/com/axion/diagnostics/data/KernelConfig.kt b/app/src/main/java/com/axion/diagnostics/data/KernelConfig.kt
-index 08da602..d617371 100644
---- a/app/src/main/java/com/axion/diagnostics/data/KernelConfig.kt
-+++ b/app/src/main/java/com/axion/diagnostics/data/KernelConfig.kt
++        val configNode = config.node
+         if (configNode != null) {
+             val gov = runCatching { File(configNode, "governor").readText().trim() }.getOrNull()
+             if (!gov.isNullOrEmpty()) return gov
+diff --git a/src/com/axion/diagnostics/data/KernelConfig.kt b/src/com/axion/diagnostics/data/KernelConfig.kt
+index b43b5e7bad7ba9f82cfcb9b6765d07f5628363a6..c1b1dac5481cd2f43d149eeea217d6ecf554fbcb 100644
+--- a/src/com/axion/diagnostics/data/KernelConfig.kt
++++ b/src/com/axion/diagnostics/data/KernelConfig.kt
 @@ -35,6 +35,9 @@ data class GpuConfig(
      val node: String?,
      val currentNode: String?,
@@ -102,7 +81,7 @@ index 08da602..d617371 100644
 +    val maxNode: String?,
 +    val governorNode: String?,
      val frequencyMultiplier: Long,
-     val values: List<Int>,
+     val values: List<Int>
  )
 @@ -52,9 +55,8 @@ object KernelConfig {
  
@@ -141,7 +120,7 @@ index 08da602..d617371 100644
 +                        governorNode = parser.getAttributeValue(null, "governorNode")
                          val multStr = parser.getAttributeValue(null, "frequencyMultiplier")
                          multiplier = multStr?.toLongOrNull() ?: 1L
- 
+                         
                          val valStr = parser.getAttributeValue(null, "values")
                          values = valStr?.split(",")
                              ?.mapNotNull { it.trim().toLongOrNull() }

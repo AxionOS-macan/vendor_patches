@@ -16,12 +16,9 @@ This lets BatteryService and SystemUI display the correct fast charging
 wattage on supported OPlus devices.
 
 Change-Id: I3dfd57c0e60f685edb57c77e1c9fce25d584566b
----
- aidl/main.cpp | 68 ++++++++++++++++++++++++++++++++++++++++++++++++++-
- 1 file changed, 67 insertions(+), 1 deletion(-)
 
 diff --git a/aidl/main.cpp b/aidl/main.cpp
-index 995e1aa..663ee2a 100644
+index 995e1aabb3196609cf1e07ae07388481d4abdd13..663ee2a5d2bb7bf0ecb89a987aa469d8623382b2 100644
 --- a/aidl/main.cpp
 +++ b/aidl/main.cpp
 @@ -5,6 +5,14 @@

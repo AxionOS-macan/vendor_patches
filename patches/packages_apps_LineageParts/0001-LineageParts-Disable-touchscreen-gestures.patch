@@ -1,18 +1,12 @@
-From 2eb46eed21f7a73bbfb4eed017c156057235014c Mon Sep 17 00:00:00 2001
+From 030c7e8cdea50f7cf56e9b07c8fa76c4f7852944 Mon Sep 17 00:00:00 2001
 From: blazerpaul15 <blazerpaul15@gmail.com>
 Date: Thu, 16 Jul 2026 18:29:31 +0900
 Subject: [PATCH] LineageParts: Disable touchscreen gestures
 
 Change-Id: I700d01f1ed6edbc35934f99021c7380623cce443
----
- AndroidManifest.xml                                            | 1 +
- res/xml/parts_catalog.xml                                      | 3 ++-
- src/org/lineageos/lineageparts/BootReceiver.java               | 1 -
- .../lineageparts/gestures/TouchscreenGestureSettings.java      | 3 +--
- 4 files changed, 4 insertions(+), 4 deletions(-)
 
 diff --git a/AndroidManifest.xml b/AndroidManifest.xml
-index 3ccc857d..5494f0b6 100644
+index 3ccc857d36d5428cca731d339e8a058768f19261..5494f0b619f3db69a3acf2bca72a84e152d41384 100644
 --- a/AndroidManifest.xml
 +++ b/AndroidManifest.xml
 @@ -242,6 +242,7 @@
@@ -24,7 +18,7 @@ index 3ccc857d..5494f0b6 100644
              android:targetActivity="PartsActivity">
              <intent-filter>
 diff --git a/res/xml/parts_catalog.xml b/res/xml/parts_catalog.xml
-index abde0e60..3bfcdfd2 100644
+index 200c861e4b2ff3b15a937fc7417ac6a3e9e4e764..bce6fec0c5ff2b818b5b6cbbdde5b5d32a800de6 100644
 --- a/res/xml/parts_catalog.xml
 +++ b/res/xml/parts_catalog.xml
 @@ -86,11 +86,12 @@
@@ -42,10 +36,10 @@ index abde0e60..3bfcdfd2 100644
      <part android:key="trust_interface"
            android:title="@string/trust_title"
 diff --git a/src/org/lineageos/lineageparts/BootReceiver.java b/src/org/lineageos/lineageparts/BootReceiver.java
-index b464b6f3..6a592900 100644
+index b464b6f3ba72692b7ca619c81625b3009a286d51..6a592900f13966d94414912d7882eaa087f02f3e 100644
 --- a/src/org/lineageos/lineageparts/BootReceiver.java
 +++ b/src/org/lineageos/lineageparts/BootReceiver.java
-@@ -47,7 +47,6 @@ public void onReceive(Context ctx, Intent intent) {
+@@ -47,7 +47,6 @@ public class BootReceiver extends BroadcastReceiver {
  
          ButtonSettings.restoreKeyDisabler(ctx);
          ButtonSettings.restoreKeySwapper(ctx);
@@ -54,10 +48,10 @@ index b464b6f3..6a592900 100644
  
      private boolean hasRestoredTunable(Context context) {
 diff --git a/src/org/lineageos/lineageparts/gestures/TouchscreenGestureSettings.java b/src/org/lineageos/lineageparts/gestures/TouchscreenGestureSettings.java
-index b71f18f1..d142624b 100644
+index b71f18f144fc820ef7d41c041bbacd99cd9fc338..d142624b553f5443ecfaad0571888c502fddcea3 100644
 --- a/src/org/lineageos/lineageparts/gestures/TouchscreenGestureSettings.java
 +++ b/src/org/lineageos/lineageparts/gestures/TouchscreenGestureSettings.java
-@@ -159,8 +159,7 @@ public static void restoreTouchscreenGestureStates(final Context context) {
+@@ -159,8 +159,7 @@ public class TouchscreenGestureSettings extends SettingsPreferenceFragment
      }
  
      private static boolean isTouchscreenGesturesSupported(final Context context) {

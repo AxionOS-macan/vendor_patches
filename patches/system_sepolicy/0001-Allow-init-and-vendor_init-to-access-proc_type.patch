@@ -7,12 +7,9 @@ Oplus camera needs it
 
 Change-Id: Ibe8d905a496192f09625a97173fbae95af5328c0
 Signed-off-by: Pranav Vashi <neobuddy89@gmail.com>
----
- private/domain.te | 2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/private/domain.te b/private/domain.te
-index f146717d9..a77674208 100644
+index f146717d984c2fbc1c4d264115c3adc3dbd50711..a77674208421ae3b09cad220d594394bcdd765e9 100644
 --- a/private/domain.te
 +++ b/private/domain.te
 @@ -1571,7 +1571,7 @@ neverallow * same_process_hwservice:hwservice_manager add;

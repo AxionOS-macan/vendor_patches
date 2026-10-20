@@ -1,16 +1,12 @@
-From cdcd71c9223cd174bbdf5dba56bc743fc89e7b33 Mon Sep 17 00:00:00 2001
+From db29b8f4ec9c47eaee0a636fd22c66944a1c66af Mon Sep 17 00:00:00 2001
 From: blazerpaul15 <blazerpaul15@gmail.com>
 Date: Thu, 16 Jul 2026 18:49:21 +0900
-Subject: [PATCH 1/2] sdk: Add Circle to Search assist key action [3]
+Subject: [PATCH] sdk: Add Circle to Search assist key action [3]
 
 Change-Id: I574ef0e52b00991abe3192302ad34db286ab2a06
----
- sdk/src/java/lineageos/providers/LineageSettings.java          | 3 ++-
- .../java/org/lineageos/internal/util/DeviceKeysConstants.java  | 3 ++-
- 2 files changed, 4 insertions(+), 2 deletions(-)
 
 diff --git a/sdk/src/java/lineageos/providers/LineageSettings.java b/sdk/src/java/lineageos/providers/LineageSettings.java
-index 1a1481d..c0d2035 100644
+index 1a1481d056cf2b2fcaaf637235ebffdee697aea2..c0d203516de18a58cf00241e41247a942092b872 100644
 --- a/sdk/src/java/lineageos/providers/LineageSettings.java
 +++ b/sdk/src/java/lineageos/providers/LineageSettings.java
 @@ -374,7 +374,7 @@ public final class LineageSettings {
@@ -31,7 +27,7 @@ index 1a1481d..c0d2035 100644
          public static final String KEY_HOME_LONG_PRESS_ACTION = "key_home_long_press_action";
  
 diff --git a/sdk/src/java/org/lineageos/internal/util/DeviceKeysConstants.java b/sdk/src/java/org/lineageos/internal/util/DeviceKeysConstants.java
-index dbb07e0..48b7cc7 100644
+index 1af1634f9f0d144adf1af8c7e4c59e4f08ee3342..22c3a420b720732204562d770762a2fc83dd9179 100644
 --- a/sdk/src/java/org/lineageos/internal/util/DeviceKeysConstants.java
 +++ b/sdk/src/java/org/lineageos/internal/util/DeviceKeysConstants.java
 @@ -34,7 +34,8 @@ public class DeviceKeysConstants {
@@ -43,4 +39,4 @@ index dbb07e0..48b7cc7 100644
 +        CONTEXTUAL_SEARCH;
  
          public static Action fromIntSafe(int id) {
-             if (id < NOTHING.ordinal() || id > Action.values().length) {
+             if (id < NOTHING.ordinal() || id >= Action.values().length) {

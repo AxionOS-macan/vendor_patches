@@ -1,17 +1,14 @@
-From 4c451f9f00517a9992b56cc7d4298d1ea720adbf Mon Sep 17 00:00:00 2001
+From 352fe2ddb912552ee8633178c4741b5981a46901 Mon Sep 17 00:00:00 2001
 From: Jonas Salo <salomannen1234@gmail.com>
 Date: Fri, 10 Jul 2026 10:58:18 +0200
 Subject: [PATCH] SystemUI: Fix AOD pickup brightness timeout
 
----
- .../systemui/doze/DozeScreenBrightness.java   | 44 ++++++++++++++++---
- 1 file changed, 37 insertions(+), 7 deletions(-)
 
 diff --git a/packages/SystemUI/src/com/android/systemui/doze/DozeScreenBrightness.java b/packages/SystemUI/src/com/android/systemui/doze/DozeScreenBrightness.java
-index 5a05f073677ee..406da77f28859 100644
+index 5a05f073677ee2bbcef6bd33b0d5a5d179a9d50f..406da77f288598591b8dba48f7aa5134f69db976 100644
 --- a/packages/SystemUI/src/com/android/systemui/doze/DozeScreenBrightness.java
 +++ b/packages/SystemUI/src/com/android/systemui/doze/DozeScreenBrightness.java
-@@ -23,6 +23,7 @@
+@@ -23,6 +23,7 @@ import static com.android.systemui.keyguard.WakefulnessLifecycle.WAKEFULNESS_GOI
  import static java.lang.Integer.max;
  
  import android.annotation.SuppressLint;
@@ -19,7 +16,7 @@ index 5a05f073677ee..406da77f28859 100644
  import android.content.BroadcastReceiver;
  import android.content.Context;
  import android.content.Intent;
-@@ -54,6 +55,7 @@
+@@ -54,6 +55,7 @@ import com.android.systemui.keyguard.WakefulnessLifecycle;
  import com.android.systemui.scene.shared.flag.SceneContainerFlag;
  import com.android.systemui.statusbar.phone.DozeParameters;
  import com.android.systemui.statusbar.policy.DevicePostureController;
@@ -55,7 +52,7 @@ index 5a05f073677ee..406da77f28859 100644
  
      private final TriggerEventListener mPickupListener = new TriggerEventListener() {
          @Override
-@@ -174,6 +179,7 @@ public DozeScreenBrightness(
+@@ -174,6 +179,7 @@ public class DozeScreenBrightness extends BroadcastReceiver implements DozeMachi
              SystemSettings systemSettings,
              DisplayManager displayManager,
              WallpaperInteractor wallpaperInteractor,
@@ -63,7 +60,7 @@ index 5a05f073677ee..406da77f28859 100644
              @Application CoroutineScope scope
      ) {
          mContext = context;
-@@ -187,6 +193,10 @@ public DozeScreenBrightness(
+@@ -187,6 +193,10 @@ public class DozeScreenBrightness extends BroadcastReceiver implements DozeMachi
          mPickupSensorUsesTrigger = pickupSensor != null
                  && pickupSensor.getType() == Sensor.TYPE_PICK_UP_GESTURE;
          mStationarySensor = sensorManager.getDefaultSensor(Sensor.TYPE_STATIONARY_DETECT);
@@ -74,7 +71,7 @@ index 5a05f073677ee..406da77f28859 100644
          mDisplayManager = displayManager;
          mLightSensorOptional = lightSensorOptional;
          mDevicePostureController = devicePostureController;
-@@ -195,6 +205,8 @@ public DozeScreenBrightness(
+@@ -195,6 +205,8 @@ public class DozeScreenBrightness extends BroadcastReceiver implements DozeMachi
          mDozeParameters = dozeParameters;
          mDozeHost = host;
          mHandler = handler;
@@ -83,7 +80,7 @@ index 5a05f073677ee..406da77f28859 100644
          mDozeLog = dozeLog;
          mSystemSettings = systemSettings;
          mWallpaperInteractor = wallpaperInteractor;
-@@ -345,25 +357,30 @@ public void onPickupGesture() {
+@@ -345,25 +357,30 @@ public class DozeScreenBrightness extends BroadcastReceiver implements DozeMachi
          }
  
          mPickupBrightnessBoosted = true;
@@ -119,7 +116,7 @@ index 5a05f073677ee..406da77f28859 100644
          if (!isPickupBrightnessBoostEnabled()
                  || !mRegistered
                  || mPickupBrightnessBoosted
-@@ -381,7 +398,20 @@ private void requestPickupSensor() {
+@@ -381,7 +398,20 @@ public class DozeScreenBrightness extends BroadcastReceiver implements DozeMachi
          }
      }
  
