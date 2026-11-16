@@ -1,0 +1,476 @@
+From 0e03ae1b001716dcdc7189aae580cdd40e7d248d Mon Sep 17 00:00:00 2001
+From: blazerpaul15 <blazerpaul15@gmail.com>
+Date: Wed, 18 Nov 2026 19:30:18 +0900
+Subject: [PATCH] renderengine: Add Dolby Vision GPU color conversion
+
+Use DolbyEffect 4.1 and QTI buffer metadata to restore native Dolby
+colors during OpenGL composition, including blur and task capture.
+
+Gate the adapter behind a device property, preserve existing HWC LUTs,
+and retain the normal output color transform and dimming stages.
+
+Assisted-by: LLM
+Change-Id: I33ee6a36b7ea21de0b724071b504eed8a7a2501a
+
+diff --git a/libs/renderengine/Android.bp b/libs/renderengine/Android.bp
+index f9a654cef432bfc333f39f119cb716e2776bf81d..c8e4f6f64e13210f30d46f1aff6684099a3a069a 100644
+--- a/libs/renderengine/Android.bp
++++ b/libs/renderengine/Android.bp
+@@ -34,8 +34,11 @@ cc_defaults {
+         true: ["-DMTK_IN_DISPLAY_FINGERPRINT"],
+         default: [],
+     }),
++    header_libs: ["libimapper_stablec"],
+     shared_libs: [
+         "libbase",
++        "libbinder_ndk",
++        "libdl",
+         "libcrypto",
+         "libcutils",
+         "libEGL",
+@@ -112,6 +115,7 @@ filegroup {
+         "skia/debug/SkiaCapture.cpp",
+         "skia/debug/SkiaMemoryReporter.cpp",
+         "skia/filters/BlurFilter.cpp",
++        "skia/filters/DolbyShader.cpp",
+         "skia/filters/EdgeExtensionShaderFactory.cpp",
+         "skia/filters/GainmapFactory.cpp",
+         "skia/filters/GaussianBlurFilter.cpp",
+diff --git a/libs/renderengine/skia/SkiaGLRenderEngine.h b/libs/renderengine/skia/SkiaGLRenderEngine.h
+index be071bd9592263fc1cfef179bf51c6fd30e5c723..e039d1944424b3c55f52f19e083d60d2a824ffe9 100644
+--- a/libs/renderengine/skia/SkiaGLRenderEngine.h
++++ b/libs/renderengine/skia/SkiaGLRenderEngine.h
+@@ -60,6 +60,7 @@ protected:
+     // rendering backend
+     virtual SkiaRenderEngine::Contexts createContexts();
+     bool supportsForwardPixelKill() const override;
++    bool supportsDolbyVisionShader() const override { return true; }
+     bool supportsFastRotatedClipRRectAA() const override;
+     bool supportsProtectedContentImpl() const override;
+     bool useProtectedContextImpl(GrProtected isProtected) override;
+diff --git a/libs/renderengine/skia/SkiaRenderEngine.cpp b/libs/renderengine/skia/SkiaRenderEngine.cpp
+index 54f1994702aada585db22767c318d5b70003b1bc..5972478d51bf4e7204eb5e4764d30ad3851bde55 100644
+--- a/libs/renderengine/skia/SkiaRenderEngine.cpp
++++ b/libs/renderengine/skia/SkiaRenderEngine.cpp
+@@ -621,7 +621,7 @@ sk_sp<SkShader> SkiaRenderEngine::createRuntimeEffectShader(
+         const auto hdrType = getHdrRenderType(parameters.layer.sourceDataspace, format,
+                                               parameters.layerDimmingRatio);
+ 
+-        const auto usingLocalTonemap =
++        const auto usingLocalTonemap = !parameters.dolbyEffectApplied &&
+                 parameters.display.tonemapStrategy == DisplaySettings::TonemapStrategy::Local &&
+                 hdrType != HdrRenderType::SDR &&
+                 shader->isAImage((SkMatrix*)nullptr, (SkTileMode*)nullptr) &&
+@@ -635,7 +635,8 @@ sk_sp<SkShader> SkiaRenderEngine::createRuntimeEffectShader(
+ 
+         // disable tonemapping if we already locally tonemapped
+         // skip tonemapping if the luts is in use
+-        auto inputDataspace = usingLocalTonemap || (graphicBuffer && parameters.layer.luts)
++        auto inputDataspace = usingLocalTonemap || parameters.dolbyEffectApplied ||
++                (graphicBuffer && parameters.layer.luts)
+                 ? parameters.outputDataSpace
+                 : parameters.layer.sourceDataspace;
+         auto effect =
+@@ -1257,6 +1258,19 @@ void SkiaRenderEngine::drawLayersInternal(
+                 shader = image->makeShader(SkSamplingOptions(), matrix);
+             }
+ 
++            bool dolbyEffectApplied = false;
++            if (supportsDolbyVisionShader() && !layer.luts) {
++                const auto sampling = layer.source.buffer.useTextureFiltering
++                        ? SkSamplingOptions(SkFilterMode::kLinear)
++                        : SkSamplingOptions();
++                if (auto corrected = mDolbyShader.makeShader(image, matrix, sampling,
++                                                              item.buffer->getBuffer(),
++                                                              layerDataspace, display.outputDataspace)) {
++                    shader = std::move(corrected);
++                    dolbyEffectApplied = true;
++                }
++            }
++
+             if (useIsOpaqueWorkaround) {
+                 shader = SkShaders::Blend(SkBlendMode::kPlus, shader,
+                                           SkShaders::Color(SkColors::kBlack,
+@@ -1292,6 +1306,7 @@ void SkiaRenderEngine::drawLayersInternal(
+                     .outputDataSpace = display.outputDataspace,
+                     .fakeOutputDataspace = fakeDataspace,
+                     .imageBounds = imageBounds,
++                    .dolbyEffectApplied = dolbyEffectApplied,
+             }));
+ 
+             // Turn on dithering when dimming beyond this (arbitrary) threshold...
+diff --git a/libs/renderengine/skia/SkiaRenderEngine.h b/libs/renderengine/skia/SkiaRenderEngine.h
+index f2f464ac117298f7fd63775394a7acf8de40dae8..fe4a2b03da33040b1a8c0a43d8cecb625500c179 100644
+--- a/libs/renderengine/skia/SkiaRenderEngine.h
++++ b/libs/renderengine/skia/SkiaRenderEngine.h
+@@ -39,6 +39,7 @@
+ #include "compat/SkiaGpuContext.h"
+ #include "debug/SkiaCapture.h"
+ #include "filters/BlurFilter.h"
++#include "filters/DolbyShader.h"
+ #include "filters/EdgeExtensionShaderFactory.h"
+ #include "filters/GainmapFactory.h"
+ #include "filters/LutShader.h"
+@@ -99,6 +100,7 @@ protected:
+     virtual Contexts createContexts() = 0;
+     virtual bool supportsProtectedContentImpl() const = 0;
+     virtual bool supportsForwardPixelKill() const { return false; }
++    virtual bool supportsDolbyVisionShader() const { return false; }
+     virtual bool supportsFastRotatedClipRRectAA() const { return true; }
+     virtual bool useProtectedContextImpl(GrProtected isProtected) = 0;
+     virtual void waitFence(SkiaGpuContext* context, base::borrowed_fd fenceFd) = 0;
+@@ -140,6 +142,7 @@ protected:
+     };
+ 
+     RuntimeEffectManager mRuntimeEffectManager;
++    DolbyShader mDolbyShader;
+ 
+     // Graphics context used for creating surfaces and submitting commands.
+     // Unlike mProtectedContext, mContext cannot be marked private because it
+@@ -187,6 +190,7 @@ private:
+         const ui::Dataspace outputDataSpace;
+         const ui::Dataspace fakeOutputDataspace;
+         const SkRect& imageBounds;
++        bool dolbyEffectApplied = false;
+     };
+     sk_sp<SkShader> createRuntimeEffectShader(const RuntimeEffectShaderParameters&);
+ 
+diff --git a/libs/renderengine/skia/filters/DolbyShader.cpp b/libs/renderengine/skia/filters/DolbyShader.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..ce99306fac2b7b1435c656defc7e3b21522d81d1
+--- /dev/null
++++ b/libs/renderengine/skia/filters/DolbyShader.cpp
+@@ -0,0 +1,289 @@
++/*
++ * Copyright (C) 2026 The LineageOS Project
++ * SPDX-License-Identifier: Apache-2.0
++ */
++#include "DolbyShader.h"
++
++#include <android-base/properties.h>
++#include <android/binder_manager.h>
++#include <android/hardware/graphics/mapper/IMapper.h>
++#include <dlfcn.h>
++#include <include/core/SkBitmap.h>
++#include <include/core/SkTileMode.h>
++#include <include/effects/SkRuntimeEffect.h>
++#include <log/log.h>
++#include <vndk/hardware_buffer.h>
++
++#include <cstring>
++#include <optional>
++#include <string>
++#include <vector>
++
++#include "skia/ColorSpaces.h"
++
++namespace android::renderengine::skia {
++namespace {
++
++// DolbyEffect 4.1 uses CICP primary/transfer identifiers and a separate range
++// enumeration (limited=0, full=1). This adapter is deliberately version-specific.
++struct DolbyColor {
++    int32_t primaries;
++    int32_t range;
++    int32_t transfer;
++};
++struct DolbyUniform {
++    std::string name;
++    std::vector<uint8_t> value;
++};
++static_assert(sizeof(DolbyColor) == 12);
++
++std::optional<DolbyColor> toDolbyColor(ui::Dataspace dataspace) {
++    DolbyColor color{};
++    switch (static_cast<ui::Dataspace>(dataspace & ui::Dataspace::STANDARD_MASK)) {
++        case ui::Dataspace::STANDARD_BT709:
++            color.primaries = 1;
++            break;
++        case ui::Dataspace::STANDARD_BT2020:
++            color.primaries = 9;
++            break;
++        case ui::Dataspace::STANDARD_DCI_P3:
++            color.primaries = 12;
++            break;
++        default:
++            return std::nullopt;
++    }
++    switch (static_cast<ui::Dataspace>(dataspace & ui::Dataspace::TRANSFER_MASK)) {
++        case ui::Dataspace::TRANSFER_LINEAR:
++            color.transfer = 8;
++            break;
++        // Match the stock integration's sRGB/BT.709 target selection.
++        case ui::Dataspace::TRANSFER_SRGB:
++            color.transfer = 1;
++            break;
++        case ui::Dataspace::TRANSFER_SMPTE_170M:
++            color.transfer = 6;
++            break;
++        case ui::Dataspace::TRANSFER_GAMMA2_2:
++            color.transfer = 4;
++            break;
++        case ui::Dataspace::TRANSFER_GAMMA2_6:
++            color.transfer = 5;
++            break;
++        case ui::Dataspace::TRANSFER_GAMMA2_8:
++            color.transfer = 3;
++            break;
++        case ui::Dataspace::TRANSFER_ST2084:
++            color.transfer = 16;
++            break;
++        case ui::Dataspace::TRANSFER_HLG:
++            color.transfer = 18;
++            break;
++        default:
++            return std::nullopt;
++    }
++    switch (static_cast<ui::Dataspace>(dataspace & ui::Dataspace::RANGE_MASK)) {
++        case ui::Dataspace::RANGE_FULL:
++            color.range = 1;
++            break;
++        case ui::Dataspace::RANGE_LIMITED:
++            color.range = 0;
++            break;
++        default:
++            return std::nullopt;
++    }
++    return color;
++}
++
++}  // namespace
++
++struct DolbyShader::State {
++    void* library = nullptr;
++    void* mapperLibrary = nullptr;
++    AIMapper* mapper = nullptr;
++    void* effect = nullptr;
++    sk_sp<SkRuntimeEffect> runtimeEffect;
++    // Last QTI CUSTOM_CONTENT_METADATA size; the QTI mapper warns on size probes.
++    int32_t metadataSize = 0;
++
++    void* (*create)() = nullptr;
++    void (*destroy)(void*) = nullptr;
++    void (*setMetadata)(void*, unsigned char*, unsigned int) = nullptr;
++    void (*setSource)(void*, DolbyColor*) = nullptr;
++    void (*setTarget)(void*, DolbyColor*) = nullptr;
++    void (*enableInverseMatrix)(void*) = nullptr;
++    void* (*generateLut)(void*, int*) = nullptr;
++    const char* (*getShader)(void*) = nullptr;
++    std::vector<DolbyUniform> (*getUniforms)(void*) = nullptr;
++    bool (*needsEffect)(void*) = nullptr;
++
++    template <typename T>
++    bool symbol(T& target, const char* name) {
++        target = reinterpret_cast<T>(dlsym(library, name));
++        return target != nullptr;
++    }
++
++    // The vendor library is a non-CFI DSO. Keep its ABI calls in this adapter.
++    __attribute__((no_sanitize("cfi"))) bool init() {
++        mapperLibrary =
++                AServiceManager_openDeclaredPassthroughHal("mapper", "qti", RTLD_NOW | RTLD_LOCAL);
++        if (!mapperLibrary) return false;
++        auto loadMapper = reinterpret_cast<AIMapper_Error (*)(AIMapper**)>(
++                dlsym(mapperLibrary, "AIMapper_loadIMapper"));
++        if (!loadMapper || loadMapper(&mapper) != AIMAPPER_ERROR_NONE || !mapper ||
++            mapper->version < AIMAPPER_VERSION_5) {
++            return false;
++        }
++        library = dlopen("/system_ext/lib64/libdolbyeffect_4.1.so", RTLD_NOW | RTLD_LOCAL);
++        if (!library) return false;
++        if (!symbol(create, "_ZN11dolbyVision11DolbyEffect11instantiateEv") ||
++            !symbol(destroy, "_ZN11dolbyVision15DolbyEffectImplD0Ev") ||
++            !symbol(setMetadata, "_ZN11dolbyVision15DolbyEffectImpl13setDvMetadataEPhj") ||
++            !symbol(setSource,
++                    "_ZN11dolbyVision15DolbyEffectImpl22setSourceColorMetadataEPNS_"
++                    "15DVColorMetaDataE") ||
++            !symbol(setTarget,
++                    "_ZN11dolbyVision15DolbyEffectImpl22setTargetColorMetadataEPNS_"
++                    "15DVColorMetaDataE") ||
++            !symbol(enableInverseMatrix,
++                    "_ZN11dolbyVision15DolbyEffectImpl30enableInverseMatrixNoDVSKPatchEv") ||
++            !symbol(generateLut, "_ZN11dolbyVision15DolbyEffectImpl11generateLutEPi") ||
++            !symbol(getShader, "_ZN11dolbyVision15DolbyEffectImpl15getShaderStringEv") ||
++            !symbol(getUniforms, "_ZN11dolbyVision15DolbyEffectImpl11getUniformsEv") ||
++            !symbol(needsEffect, "_ZN11dolbyVision15DolbyEffectImpl16needsDolbyEffectEv")) {
++            return false;
++        }
++        effect = create();
++        if (!effect) return false;
++        // Upstream Skia performs the OES YUV->RGB conversion. The vendor shader
++        // must undo that conversion to recover IPT before applying the Dolby LUT.
++        enableInverseMatrix(effect);
++        const char* shader = getShader(effect);
++        if (!shader) return false;
++        auto result = SkRuntimeEffect::MakeForShader(SkString(shader));
++        runtimeEffect = std::move(result.effect);
++        if (!runtimeEffect) {
++            ALOGW("DolbyShader: shader compilation failed: %s", result.errorText.c_str());
++        }
++        return runtimeEffect != nullptr;
++    }
++
++    __attribute__((no_sanitize("cfi"))) ~State() {
++        if (effect && destroy) destroy(effect);
++        if (library) dlclose(library);
++        if (mapperLibrary) dlclose(mapperLibrary);
++    }
++
++    __attribute__((no_sanitize("cfi"))) std::vector<uint8_t> metadata(
++            const sp<GraphicBuffer>& buffer) {
++        const auto* handle = AHardwareBuffer_getNativeHandle(buffer->toAHardwareBuffer());
++        constexpr AIMapper_MetadataType type = {"QTI", 10029};
++        std::vector<uint8_t> data;
++        int32_t size = -1;
++        if (metadataSize > 0) {
++            data.resize(metadataSize);
++            size = mapper->v5.getMetadata(handle, type, data.data(), data.size());
++        }
++        if (metadataSize <= 0 || size != metadataSize) {
++            size = mapper->v5.getMetadata(handle, type, nullptr, 0);
++            if (size < 15 || size > 65536) return {};
++            data.resize(size);
++            if (mapper->v5.getMetadata(handle, type, data.data(), data.size()) != size) return {};
++            metadataSize = size;
++        }
++        // QTI CUSTOM_CONTENT_METADATA: uint64_t length followed by the RPU.
++        uint64_t length;
++        std::memcpy(&length, data.data(), sizeof(length));
++        constexpr uint8_t rpuStart[] = {0, 0, 0, 1, 0x7c, 1, 0x19};
++        if (length < sizeof(rpuStart) || length > data.size() - sizeof(length) ||
++            std::memcmp(data.data() + sizeof(length), rpuStart, sizeof(rpuStart)) != 0) {
++            return {};
++        }
++        data.erase(data.begin(), data.begin() + sizeof(length));
++        data.resize(length);
++        return data;
++    }
++
++    __attribute__((no_sanitize("cfi"))) sk_sp<SkShader> build(const sk_sp<SkImage>& image,
++                                                              const SkMatrix& matrix,
++                                                              const SkSamplingOptions& sampling,
++                                                              std::vector<uint8_t>& metadata,
++                                                              DolbyColor source, DolbyColor target,
++                                                              ui::Dataspace output) {
++        setSource(effect, &source);
++        setMetadata(effect, metadata.data(), metadata.size());
++        setTarget(effect, &target);
++        if (!needsEffect(effect)) return nullptr;
++        int size = 0;
++        const void* pixels = generateLut(effect, &size);
++        if (!pixels || size < 2 || size > 65) return nullptr;
++        auto colorSpace = toSkColorSpace(output);
++        SkBitmap bitmap;
++        // The 4.1 SDK returns a flattened, opaque RGB101010 LUT, not float pixels.
++        if (!bitmap.tryAllocPixels(SkImageInfo::Make(size * size, size, kRGB_101010x_SkColorType,
++                                                     kOpaque_SkAlphaType, colorSpace))) {
++            return nullptr;
++        }
++        std::memcpy(bitmap.getPixels(), pixels, static_cast<size_t>(size) * size * size * 4);
++        auto lutImage = SkImages::RasterFromBitmap(bitmap);
++        if (!lutImage) return nullptr;
++        SkRuntimeShaderBuilder builder(runtimeEffect);
++        for (const auto& uniform : getUniforms(effect)) {
++            const auto* definition = runtimeEffect->findUniform(uniform.name.c_str());
++            if (!definition || definition->sizeInBytes() != uniform.value.size()) return nullptr;
++            builder.uniform(uniform.name.c_str()).set(uniform.value.data(), uniform.value.size());
++        }
++        SkMatrix lutMatrix = SkMatrix::Scale(1.f / (size * size), 1.f / size);
++        builder.child("lut_cube") =
++                lutImage->makeShader(SkSamplingOptions(SkFilterMode::kLinear), lutMatrix);
++        // The LUT consumes the raw GPU sample and emits pixels in the target
++        // encoding. Retagging avoids treating native Dolby IPT as ordinary PQ.
++        auto rawImage = image->reinterpretColorSpace(colorSpace);
++        if (!rawImage) return nullptr;
++        builder.child("child") =
++                rawImage->makeShader(SkTileMode::kClamp, SkTileMode::kClamp, sampling, &matrix);
++        auto shader = builder.makeShader();
++        // Preserve nonlinear samples inside this effect, including when the
++        // outer dimming/color-transform effect uses a linear working space.
++        return shader ? shader->makeWithWorkingColorSpace(colorSpace) : nullptr;
++    }
++};
++
++DolbyShader::DolbyShader()
++    : mEnabled(base::GetBoolProperty("ro.surface_flinger.supports_dolby_vision", false)) {}
++DolbyShader::~DolbyShader() = default;
++
++sk_sp<SkShader> DolbyShader::makeShader(const sk_sp<SkImage>& image, const SkMatrix& matrix,
++                                        const SkSamplingOptions& sampling,
++                                        const sp<GraphicBuffer>& buffer, ui::Dataspace source,
++                                        ui::Dataspace output) {
++    if (!mEnabled || !image || !buffer ||
++        (source & ui::Dataspace::STANDARD_MASK) !=
++                static_cast<int32_t>(ui::Dataspace::STANDARD_BT2020) ||
++        (source & ui::Dataspace::TRANSFER_MASK) !=
++                static_cast<int32_t>(ui::Dataspace::TRANSFER_ST2084)) {
++        return nullptr;
++    }
++    auto sourceColor = toDolbyColor(source);
++    auto targetColor = toDolbyColor(output);
++    if (!sourceColor || !targetColor) return nullptr;
++    if (!mInitialized) {
++        mInitialized = true;
++        auto state = std::make_unique<State>();
++        if (state->init())
++            mState = std::move(state);
++        else
++            ALOGW("DolbyShader: optional DolbyEffect 4.1 adapter unavailable");
++    }
++    if (!mState) return nullptr;
++    auto metadata = mState->metadata(buffer);
++    if (metadata.empty()) return nullptr;
++    auto shader =
++            mState->build(image, matrix, sampling, metadata, *sourceColor, *targetColor, output);
++    if (shader && !mLoggedSuccess) {
++        ALOGI("DolbyShader: enabled DolbyEffect 4.1 GPU color conversion");
++        mLoggedSuccess = true;
++    }
++    return shader;
++}
++
++}  // namespace android::renderengine::skia
+diff --git a/libs/renderengine/skia/filters/DolbyShader.h b/libs/renderengine/skia/filters/DolbyShader.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..6fcfd6c3638e166ca1ef433d9fcc12ea27540bcf
+--- /dev/null
++++ b/libs/renderengine/skia/filters/DolbyShader.h
+@@ -0,0 +1,38 @@
++/*
++ * Copyright (C) 2026 The LineageOS Project
++ * SPDX-License-Identifier: Apache-2.0
++ */
++#pragma once
++
++#include <include/core/SkImage.h>
++#include <include/core/SkMatrix.h>
++#include <include/core/SkSamplingOptions.h>
++#include <include/core/SkShader.h>
++#include <ui/GraphicBuffer.h>
++
++#include <memory>
++
++namespace android::renderengine::skia {
++
++// Adapter for the DolbyEffect 4.1 libraries shipped on Oplus devices. No pixel
++// contents are mapped on the CPU; only the vendor's per-buffer Dolby metadata.
++class DolbyShader {
++   public:
++    DolbyShader();
++    ~DolbyShader();
++
++    // Returns nullptr when the buffer is not Dolby, the device has not opted in,
++    // or the optional vendor implementation cannot process it.
++    sk_sp<SkShader> makeShader(const sk_sp<SkImage>& image, const SkMatrix& matrix,
++                               const SkSamplingOptions& sampling, const sp<GraphicBuffer>& buffer,
++                               ui::Dataspace source, ui::Dataspace output);
++
++   private:
++    struct State;
++    const bool mEnabled;
++    bool mInitialized = false;
++    bool mLoggedSuccess = false;
++    std::unique_ptr<State> mState;
++};
++
++}  // namespace android::renderengine::skia

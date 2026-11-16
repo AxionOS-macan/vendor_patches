@@ -1,0 +1,27 @@
+From 2cdb321e1d1a4c4c6b232165fefac89336991c9f Mon Sep 17 00:00:00 2001
+From: Alexander Koskovich <akoskovich@pm.me>
+Date: Thu, 1 Oct 2026 22:26:45 -0400
+Subject: [PATCH] kernel: Don't have devices specify a system_dlkm load list
+
+system_dlkm is meant to be a generic partition and should not have devices
+supplying their own load list.
+
+Should add support for just feeding in the system_dlkm image straight from
+the Bazel build at some point instead of crafting our own which can be
+mangled by the vendor build (vendor modules overriding GKI ones, etc).
+
+Change-Id: I9fe2694426d498c20ee086e98ceffde1026d3e85
+
+diff --git a/build/tasks/kernel.mk b/build/tasks/kernel.mk
+index 15fe0aab32f19b731e1313198b1ed7321a2280a6..18f7ddb601b120e8961085561268ec85bd44f3ae 100644
+--- a/build/tasks/kernel.mk
++++ b/build/tasks/kernel.mk
+@@ -794,7 +794,7 @@ $(TARGET_PREBUILT_INT_KERNEL): $(DEPMOD) $(KERNEL_MODULES_PARTITION_FILE_LIST) $
+ 	)
+ 	$(if $(filter $(TARGET_KERNEL_MIXED_MODE),true),\
+ 		system_dlkm_modules=$$(awk -F'/' '{ print "$(KERNEL_OUT)/"$$NF }' $(KERNEL_OUT)/system_dlkm.modules.load); \
+-		($(call build-image-kernel-modules-lineage,$$system_dlkm_modules,$(SYSTEM_KERNEL_MODULES_OUT),$(SYSTEM_KERNEL_MODULE_MOUNTPOINT)/,$(SYSTEM_KERNEL_DEPMOD_STAGING_DIR),$(SYSTEM_KERNEL_MODULES_LOAD),,$(SYSTEM_KERNEL_MODULES_PARTITION_FILE_LIST),))\
++		($(call build-image-kernel-modules-lineage,$$system_dlkm_modules,$(SYSTEM_KERNEL_MODULES_OUT),$(SYSTEM_KERNEL_MODULE_MOUNTPOINT)/,$(SYSTEM_KERNEL_DEPMOD_STAGING_DIR),$$system_dlkm_modules,,$(SYSTEM_KERNEL_MODULES_PARTITION_FILE_LIST),))\
+ 	)
+ 	vendor_modules=$$(comm -23 <(find $(KERNEL_OUT) -maxdepth 1 -type f -name '*.ko' | awk -F'/' '{ print $$NF }' | sort) <(awk -F'/' '{ print $$NF }' $(KERNEL_OUT)/system_dlkm.modules.load | sort) | sed 's|^|$(KERNEL_OUT)/|'); \
+ 	($(call build-image-kernel-modules-lineage,$$vendor_modules,$(KERNEL_MODULES_OUT),$(KERNEL_MODULE_MOUNTPOINT)/,$(KERNEL_DEPMOD_STAGING_DIR),$(BOARD_VENDOR_KERNEL_MODULES_LOAD),,$(KERNEL_MODULES_PARTITION_FILE_LIST),$(SYSTEM_KERNEL_DEPMOD_STAGING_DIR)/lib/modules/0.0/$(SYSTEM_KERNEL_MODULE_MOUNTPOINT)))

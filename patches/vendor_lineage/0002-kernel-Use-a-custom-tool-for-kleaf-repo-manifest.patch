@@ -1,0 +1,49 @@
+From ba0dd6d30aa369c65f21cb1c8ae23dd9827f8dc2 Mon Sep 17 00:00:00 2001
+From: LuK1337 <priv.luk@gmail.com>
+Date: Sun, 20 Sep 2026 13:10:33 +0200
+Subject: [PATCH] kernel: Use a custom tool for kleaf repo manifest
+
+See: If6d346ab6a1178b3895be25662a507e575a8c6f1
+Change-Id: If5f1fc7b3c1819f8009db172c62003e31b3eac20
+
+diff --git a/build/tasks/kernel.mk b/build/tasks/kernel.mk
+index c30364273458112c0d3014ff154b5b446cdeadba..0a5beeb3f4f213d2ac4ee26b706ea201e325d7b4 100644
+--- a/build/tasks/kernel.mk
++++ b/build/tasks/kernel.mk
+@@ -771,15 +771,8 @@ $(TARGET_PREBUILT_INT_KERNEL): $(DEPMOD) $(KERNEL_MODULES_PARTITION_FILE_LIST) $
+ 	@echo "Building $(BOARD_KERNEL_IMAGE_NAME)"
+ 	$(hide) rm -rf $(KERNEL_OUT)
+ 	@mkdir -p $(KERNEL_OUT) $(KERNEL_BAZEL_OUT)
+-	$(hide) cd $(KERNEL_PATH) && \
+-		python3 $(BUILD_TOP)/.repo/repo/repo manifest -o - -r \
+-		| awk -v pat="kernel/platform/kernel-$(TARGET_KERNEL_VERSION)" ' \
+-			/^  <project.*\/>$$/    { if (index($$0, pat)) { gsub(pat "/", ""); print }; next } \
+-			/^  <project/          { keep = index($$0, pat) > 0; if (keep) { gsub(pat "/", ""); print }; buf = 1; next } \
+-			buf && /  <\/project>/ { if (keep) { gsub(pat "/", ""); print }; buf = 0; next } \
+-			buf                    { if (keep) { gsub(pat "/", ""); print }; next } \
+-			                       { print } \
+-		' \
++	$(hide) cd $(BUILD_TOP) && \
++		python3 vendor/lineage/build/tools/kernel_kleaf_manifest.py $(TARGET_KERNEL_VERSION) \
+ 		> $(abspath $(KERNEL_OUT))/manifest.xml
+ 	$(hide) cd $(KERNEL_PATH) && \
+ 		./tools/bazel \
+diff --git a/build/tools/kernel_kleaf_manifest.py b/build/tools/kernel_kleaf_manifest.py
+new file mode 100755
+index 0000000000000000000000000000000000000000..153a3284f3a7151b915417e5299c458d0f1ed804
+--- /dev/null
++++ b/build/tools/kernel_kleaf_manifest.py
+@@ -0,0 +1,13 @@
++#!/usr/bin/env python3
++import sys
++
++REPO_PREFIX = f'kernel/platform/kernel-{sys.argv[1]}/'
++
++print('<manifest>')
++
++with open('.repo/project.list', 'r') as f:
++    for line in f:
++        if line.startswith(REPO_PREFIX):
++            print(f'  <project path="{line[len(REPO_PREFIX) :].strip()}" />')
++
++print('</manifest>')
